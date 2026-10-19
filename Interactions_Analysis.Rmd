@@ -1,0 +1,889 @@
+---
+title: "Interactions_Analysis"
+output: html_document
+date: "2026-10-07"
+---
+
+```{r}
+#Reading in, handling, cleaning data.
+
+#library(readxl) #read in xlsx files
+library(tidyr) #data handling
+library(plyr)
+library(dplyr) #data wrangling
+library(tibble)
+library(lubridate)
+
+#Movement and spatial analyses
+
+library(sf)
+library(sp)
+library(raster)
+
+library(adehabitatLT)
+library(adehabitatHR) #analyses of home ranges and other movement code
+
+library(diveMove)
+library(tagtools)
+library(caTools)
+
+library(bioRad) #For sunrise and sunset
+
+#Statistical analyses
+
+library(car) #Anova() function
+library(glmmTMB) #generalized linear mixed models
+library(MuMIn) #dredge() function for model selection
+library(DHARMa) #assumption checking
+library(performance) #assumption checking
+library(emmeans) #marginal means estimation
+library(multcomp) #post-hoc multiple comparisons
+
+#Plotting and mapping
+
+library(ggplot2) #visualization
+library(ggpubr) #for ggarrange() etc.
+library(gridExtra) #has a function for comparing ggplot plots side by side.
+library(RColorBrewer) #nice palettes
+library(wesanderson)
+
+library(ggmap) #use this for plotting maps
+library(maps)
+library(mapdata)
+library(rworldmap)
+#library(maptools)
+
+library(hms)
+library(ggalt)
+
+#Dealing with conflicts
+
+library(conflicted)
+conflict_prefer("rename", "dplyr")
+conflict_prefer("group_by", "dplyr")
+conflict_prefer("filter", "dplyr")
+conflict_prefer("summarise", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("mutate", "dplyr")
+conflict_prefer("count", "dplyr")
+conflict_prefer("contr.sum", "stats")
+conflict_prefer("id", "adehabitatLT")
+conflict_prefer("lag", "dplyr")
+conflicts_prefer(dplyr::arrange)
+
+#install.packages("fuzzyjoin")
+
+#install.packages("formattable")
+
+#install.packages('extrafont')
+library(extrafont)
+
+#install.packages("showtext")
+library(showtext)
+library(ggplot2)
+```
+
+Read in and format data
+```{r}
+#READING IN, FORMATTING FINAL DATA FOR ANALYSIS
+data.ids.meanDBA1 <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/full.CATS.data.csv")
+
+data.ids.meanDBA <- data.ids.meanDBA1 %>%
+ # mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y')) %>%
+  mutate(ReleaseTime = as.POSIXct(ReleaseTime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(BehStartTime = as.POSIXct(BehStartTime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(BehStopTime = as.POSIXct(BehStopTime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(ObsStartTime = as.POSIXct(ObsStartTime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(ObsEndTime = as.POSIXct(ObsEndTime)) %>%
+  mutate(Time = as.POSIXct(Time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  arrange(DeployID, Time)
+data.ids.meanDBA
+  
+```
+
+
+TIME BUDGETS - Fig 3
+```{r}
+#Time budget plot
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+#TRIMMED DATASET
+#Count up total hours of footage
+#LOGGIES
+timebudget.cc <- data.ids.meanDBA %>%
+  filter(!DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17",
+                          "CC-11-12_CR18", "CC-11-12_CR19", "CC-11-145_CR2", "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5",
+                          "CC-11-145_CR6")) %>%
+  distinct(DeployID, Behavior, Segment, BehDuration) %>%
+  group_by(DeployID, Behavior) %>%
+  summarise(total_sec = sum(BehDuration, na.rm = TRUE), .groups = "drop") %>%
+  group_by(DeployID) %>%
+  mutate(percent = 100 * total_sec / sum(total_sec, na.rm = TRUE)) %>%
+  ungroup()
+timebudget.cc
+
+cc.timestats <- timebudget.cc %>%
+  group_by(Behavior) %>%
+  summarise(
+    mean_percent = mean(percent, na.rm = TRUE),
+    se_percent = sd(percent, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop")
+cc.timestats
+
+#GREENS
+timebudget.cm <- data.ids.meanDBA %>%
+  filter(DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR18", "CC-11-145_CR2",
+                         "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5", "CC-11-145_CR6")) %>%
+  distinct(DeployID, Behavior, Segment, BehDuration) %>%
+  group_by(DeployID, Behavior) %>%
+  summarise(total_sec = sum(BehDuration, na.rm = TRUE), .groups = "drop") %>%
+  group_by(DeployID) %>%
+  mutate(percent = 100 * total_sec / sum(total_sec, na.rm = TRUE)) %>%
+  ungroup()
+timebudget.cm
+
+cm.timestats <- timebudget.cm %>%
+  group_by(Behavior) %>%
+  summarise(
+    mean_percent = mean(percent, na.rm = TRUE),
+    se_percent   = sd(percent, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop")
+cm.timestats
+
+#KEMPS
+timebudget.lk <- data.ids.meanDBA %>%
+  filter(DeployID %in% c("CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR19")) %>%
+  distinct(DeployID, Behavior, Segment, BehDuration) %>%
+  group_by(DeployID, Behavior) %>%
+  summarise(total_sec = sum(BehDuration, na.rm = TRUE), .groups = "drop") %>%
+  group_by(DeployID) %>%
+  mutate(percent = 100 * total_sec / sum(total_sec, na.rm = TRUE)) %>%
+  ungroup()
+timebudget.lk
+
+lk.timestats <- timebudget.lk %>%
+  group_by(Behavior) %>%
+  summarise(
+    mean_percent = mean(percent, na.rm = TRUE),
+    se_percent   = sd(percent, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop")
+lk.timestats
+
+#COMBINE ALL SP INTO ONE DF
+timebudget.all <- bind_rows(
+  timebudget.cc %>% mutate(Species = "Loggerhead"),
+  timebudget.cm %>% mutate(Species = "Green"),
+  timebudget.lk %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) %>%
+  mutate(Behavior = factor(Behavior, levels = c("Swimming", "Resting",  "Foraging", "Breathing", "Species Interaction", "Other")))
+
+#COMBINE STATS FOR ALL SP INTO ONE DF
+timestats.all <- bind_rows(
+  cc.timestats %>% mutate(Species = "Loggerhead"),
+  cm.timestats %>% mutate(Species = "Green"),
+  lk.timestats %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) %>%
+  mutate(Behavior = factor(Behavior, levels = c("Swimming", "Resting",  "Foraging", "Breathing", "Species Interaction", "Other")))
+
+timebudget.all
+timestats.all
+
+#calc percent more time cc spent on x beh than cm did
+timestats.all %>%
+  filter(Behavior == "Breathing", Species %in% c("Green", "Loggerhead")) %>%
+  summarise(pct_higher = (mean_percent[Species == "Loggerhead"] -
+                          mean_percent[Species == "Green"]) /
+                          mean_percent[Species == "Green"] * 100,
+            pp_diff    = mean_percent[Species == "Loggerhead"] -
+                         mean_percent[Species == "Green"])
+
+```
+
+```{r}
+#STATS:  differences in % time spent on each behavior
+#Histogram to glance at data distribution
+timebudget.all %>%
+  mutate(Behavior = as.factor(Behavior)) %>%
+  group_by(Behavior, Species) %>%
+  ggplot(aes(x=percent))+
+  geom_histogram()+
+  facet_wrap(Behavior~Species)
+
+cc_ids <- c("CC-11-11_CR10", "CC-11-11_CR12", "CC-11-11_CR13", "CC-11-11_CR14", "CC-11-11_CR15", "CC-11-11_CR16", "CC-11-11_CR17",
+            "CC-11-11_CR18", "CC-11-11_CR19", "CC-11-11_CR21", "CC-11-11_CR22", "CC-11-11_CR4", "CC-11-11_CR5", "CC-11-11_CR6",
+            "CC-11-11_CR7", "CC-11-11_CR8", "CC-11-11_CR9", "CC-11-12_CR10", "CC-11-12_CR11", "CC-11-12_CR3", "CC-11-12_CR4", 
+            "CC-11-12_CR6", "CC-11-12_CR7", "CC-11-12_CR8", "CC-11-12_CR9", "CC-11-12_CR20")
+cm_ids <- c("CC-11-12_CR12", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR18", "CC-11-145_CR2", "CC-11-145_CR3",
+            "CC-11-145_CR4", "CC-11-145_CR5", "CC-11-145_CR6")
+lk_ids <- c("CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR19") #connecting species to deployids to fill blanks below once i add in the zeros for behaviors turtles didnt exhibit
+
+timebudget.all <- timebudget.all %>%
+  mutate(prop = percent / 100) %>%
+  complete(DeployID, Behavior, fill = list(prop = 0)) %>% #change percent column to a proportion between 0 - 1 to make beta regression run properly, add rows for 0s (e.g., if a turtle didn't forage gets a 0 for prop)
+  mutate(total_sec = if_else(is.na(total_sec), 0, total_sec)) %>%
+  mutate(percent = if_else(is.na(percent), 0, percent)) %>% #filling NAs with 0s
+  mutate(
+    Species = case_when(
+      is.na(Species) & DeployID %in% cc_ids ~ "Loggerhead",
+      is.na(Species) & DeployID %in% cm_ids ~ "Green",
+      is.na(Species) & DeployID %in% lk_ids ~ "Kemp's ridley",  TRUE ~ Species)) #filling missing species
+
+timebudget.all1 <- timebudget.all %>%
+  filter(!DeployID %in% c("CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR19")) %>%
+  group_by(DeployID) %>%
+  mutate(total_obs_sec = sum(total_sec, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(occur = as.integer(total_sec > 0))
+timebudget.all1
+
+# model for behavior occurrence
+m_occ_species <- glm(occur ~ Species * Behavior, family = binomial, data = timebudget.all1) #binomial model for whether or not a behavior occurred
+options(contrasts = c("contr.sum", "contr.poly"))
+Anova(m_occ_species, type = 3)
+emmeans(m_occ_species, pairwise ~ Species | Behavior, type = "response") #post-hoc for which behaviors were  different in occurrence between species (spoiler: none)
+summary(m_occ_species)
+
+#eliminate zeros as the next model is looking at how time spent varies if a behavior DID occur:
+dat_pos <- timebudget.all1 %>% 
+  filter(total_sec > 0)
+dat_pos$Species <- factor(dat_pos$Species) #convert species to a factor
+
+#model for if a behavior occurred, how do species and behavior affect amt time spent; accounts for observation time to normalize
+m_amt_species <- glmmTMB(log(total_sec) ~ Species * Behavior + offset(log(total_obs_sec)) + (1 | DeployID), dispformula = ~ Behavior, family = gaussian, data = dat_pos) 
+options(contrasts = c("contr.sum", "contr.poly"))
+Anova(m_amt_species, type = 3)
+emmeans(m_amt_species, pairwise ~ Species | Behavior, type = "response") #post-hoc for which behaviors were  different in time spent between species (cc spent more time swimming and breathing than cm)
+
+#checking model assumptions
+res_occ_species <- simulateResiduals(m_occ_species) 
+plot(res_occ_species) #good; looks uniform and dispersion test not significant 
+res_amt_species <- simulateResiduals(m_amt_species)
+plot(res_amt_species) #good; looks uniform and dispersion test not significant 
+#duration model assumes positive (yes, good), right-skewed (but then more even using the log; yes, good) data
+hist(dat_pos$total_sec) #good, right skewed
+hist(log(dat_pos$total_sec)) #good, more even
+#normality of random intercepts
+ran <- ranef(m_amt_species)$cond$DeployID[,1]
+qqnorm(ran)
+qqline(ran) #good
+
+```
+
+```{r}
+#CREATE predicted time budg model and plot predicted means 
+new.length <- dat_pos %>%
+  ungroup() %>%
+  mutate(pred = predict(m_amt_species, newdata = ., re.form = NULL, type = "response"))
+library(emmeans)
+timebudg.ci <- emmeans(m_amt_species, ~ Behavior * Species, type = "response", offset = 0)
+
+#plot predicted means
+#arranging things with enough space to include Lk (otherwise there's overlap since Lk only has data for 1/3 layers)
+sp_levels   <- c("Loggerhead", "Green", "Kemp's ridley")
+beh_levels <- c("Swimming", "Resting", "Foraging", "Breathing", "Species Interaction", "Other")
+
+timebudget.all <- timebudget.all %>%
+  ungroup() %>%
+  mutate(Species  = factor(Species, levels = sp_levels),
+         Behavior = factor(Behavior, levels = beh_levels))
+
+timebudg.df <- as.data.frame(timebudg.ci) %>%
+  mutate(across(c(response, lower.CL, upper.CL), ~ .x * 100),
+         Species  = factor(Species, levels = sp_levels),
+         Behavior = factor(Behavior, levels = beh_levels),
+         xpos = as.numeric(Behavior) + (as.numeric(Species) - 2) * dodge / 3)
+
+sp_colors <- c("Loggerhead" = "#FF7575", "Green" = "#5CDEAB", "Kemp's ridley" = "#C08DFF")
+
+timebudg.predplot <- ggplot(timebudget.all, aes(Behavior, fill = Species)) +
+  geom_jitter(aes(y = percent, color = Species), position = position_jitterdodge(jitter.width = 0.1, dodge.width = dodge),
+              alpha = 0.4, size = 1, show.legend = FALSE) +
+  geom_errorbar(data = timebudg.df, aes(x = xpos, ymin = lower.CL, ymax = upper.CL), width = 0.08, show.legend = FALSE) +
+  geom_point(data = timebudg.df, aes(x = xpos, y = response, fill = Species), shape = 21, size = 2, color = "black", show.legend = TRUE) +
+  labs(x = NULL, y = "Percent of time spent (%)", color = "Sea Turtle Species") +
+  guides(fill = guide_legend(override.aes = list(shape = 21, color = "black", size = 2)), color = "none") +
+  scale_color_manual(values = sp_colors) +
+  scale_fill_manual(values = sp_colors, limits = sp_levels, drop = FALSE) +
+  theme_classic() +
+  theme( #making background transparent
+    panel.background = element_rect(fill = "white", colour = NA), plot.background  = element_rect(fill = "white", colour = NA),
+    legend.background = element_rect(fill = "white", colour = NA), legend.key = element_rect(fill = "white", colour = NA),
+    axis.line = element_line(color = "black"), axis.ticks = element_line(color = "black"),
+    legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black")) +
+  scale_x_discrete(labels = c("Species Interaction" = "Species\ninteraction")) +  
+  theme(  
+    axis.text.x = element_text(size = 14, color = "black"), #angle = 45, hjust = 1, 
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 16, color = "black", margin = margin(t = 10, r = 0, b = 0, l = 0)),
+    axis.title.y = element_text(size = 16, color = "black"),
+    text = element_text(family = "Segoe UI"),
+    legend.position = "bottom")
+
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/timebudg.predplot.png", timebudg.predplot, width = 8, height = 6, dpi = 300)
+
+#Now create one just for breathing, interactions, and other to stitch to big one and create zoomed in view
+small_levels <- c("Breathing", "Species Interaction", "Other")
+
+smalltimebudget.all <- timebudget.all %>%
+  filter(Behavior %in% small_levels) %>%
+  mutate(Behavior = factor(Behavior, levels = small_levels),
+         Species  = factor(Species,  levels = sp_levels))
+
+smalltimebudg.df <- timebudg.df %>%
+  filter(Behavior %in% small_levels) %>%
+  mutate(Behavior = factor(Behavior, levels = small_levels),
+         Species  = factor(Species, levels = sp_levels),
+         xpos = as.numeric(Behavior) + (as.numeric(Species) - 2) * dodge / 3)
+
+smallbeh.predplot <- ggplot(smalltimebudget.all, aes(Behavior, fill = Species)) +
+  geom_jitter(aes(y = percent, color = Species), position = position_jitterdodge(jitter.width = 0.1, dodge.width = dodge),
+              alpha = 0.4, size = 1, show.legend = FALSE) +
+  geom_errorbar(data = smalltimebudg.df, aes(x = xpos, ymin = lower.CL, ymax = upper.CL), width = 0.08, show.legend = FALSE) +
+  geom_point(data = smalltimebudg.df, aes(x = xpos, y = response, fill = Species), shape = 21, size = 2, color = "black", show.legend = FALSE) +
+  labs(x = NULL, y = NULL, color = "Sea Turtle Species") +
+  guides(fill = guide_legend(override.aes = list(shape = 21, color = "black", size = 2)), color = "none") +
+  scale_color_manual(values = sp_colors) +
+  scale_fill_manual(values = sp_colors, limits = sp_levels, drop = FALSE) +
+  theme_classic() +
+  theme( #making background transparent
+    panel.background = element_rect(fill = "white", colour = NA), plot.background  = element_rect(fill = "white", colour = NA),
+    legend.background = element_rect(fill = "white", colour = NA), legend.key = element_rect(fill = "white", colour = NA),
+    axis.line = element_line(color = "black"), axis.ticks = element_line(color = "black"),
+    legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black")) +
+  scale_x_discrete(labels = c("Species Interaction" = "Species\ninteraction")) +  
+  labs(tag = "b)") +
+  theme(  
+    plot.tag = element_text(size = 18, color = "black", hjust = 1.7, vjust = 0.5),
+    plot.tag.position = c(0.02, 0.98),
+    plot.tag.location = "plot",
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 30),
+    axis.text.x = element_text(size = 14, color = "black"), #angle = 45, hjust = 1, 
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 16, color = "black", margin = margin(t = 10, r = 0, b = 0, l = 0)),
+    axis.title.y = element_text(size = 16, color = "black"),
+    text = element_text(family = "Segoe UI"),
+    legend.position = "bottom",
+    plot.background = element_rect(fill = "white", colour = "black", linewidth = 1)) 
+  
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/smalltimeb.predplot.png", smallbeh.predplot, width = 4, height = 6, dpi = 300)
+
+#combine both plots into one picture
+library(patchwork)
+combo_timebudg.predplot <- timebudg.predplot +
+  annotate(geom = "text", x = -Inf, y = Inf, label = "a)", size = 6, hjust = 2, vjust = 1.5) + #labelling big plot a
+  annotate(geom = "rect", xmin = 3.5, xmax = 6.5, #adding rectangle for around 3 small behaviors on big plot
+           ymin = min(characteristics$NumSegments) - 0.3 * diff(range(characteristics$NumSegments)), ymax = 8, fill = NA, color = "black", 
+           linewidth = 0.4) +
+  coord_cartesian(clip = "off") +
+  annotate(geom = "text", x = 6.5, y = max(characteristics$NumSegments) * 1.05, label = "*", size = 14, vjust = 1.2, hjust = 0.45) + #add star for box around big plot
+  annotate(geom = "text", x = 3.7 , y = Inf, label = "*", size = 14, vjust = 1, hjust = 0.5) + # add star for mini plot
+  inset_element(smallbeh.predplot, left = 0.55, bottom = 0.35, right = 0.98, top = 0.98) # add mini plot in
+
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/combo_timebudg.predplot.png", combo_timebudg.predplot, width = 10, height = 6, dpi = 300)
+
+```
+
+
+INTERACTION COUNTS - Fig 4
+```{r}
+#Plot # of occurrences of each interaction type for each turtle
+type_counts <- data.ids.meanDBA %>%
+  filter(Subject == "CATS Turtle", Behavior == "Species Interaction") %>% 
+  distinct(DeployNum, InteractionType, Segment) %>%  
+  count(DeployNum, InteractionType, name = "NumSegments")
+type_counts
+
+characteristics <- data.ids.meanDBA %>%
+  filter(Subject == "CATS Turtle", Behavior == "Species Interaction") %>% 
+  distinct(DeployNum, InteractionType, SpeciesSubject, SpeciesInteractingWith, Segment) %>%  
+  count(InteractionType, SpeciesSubject, SpeciesInteractingWith, name = "NumSegments") %>%
+  group_by(SpeciesSubject) %>%
+  mutate(SpeciesCombo = paste(SpeciesSubject, SpeciesInteractingWith, sep = "-")) %>%
+  mutate(InteractionType = factor(InteractionType, levels = c("Aggressive", "Active", "Passive"))) %>%
+  mutate(SpeciesCombo = factor(SpeciesCombo, levels = c("Cc-Cc", "Cm-Cm", "Cc-Cm", "Cm-Cc", "Cc-Lk", "Lk-Cm"))) 
+
+#change species names to reflect common name instead of latin abbreviations
+characteristics1 <- characteristics %>%
+  mutate(SpeciesCombo = gsub("Cc", "Loggerhead", SpeciesCombo),
+       SpeciesCombo = gsub("Cm", "Green", SpeciesCombo),
+       SpeciesCombo = gsub("Lk", "Kemp's ridley", SpeciesCombo),
+       SpeciesCombo = factor(SpeciesCombo, 
+                              levels = c("Loggerhead-Loggerhead", "Green-Green", 
+                                         "Loggerhead-Green", "Green-Loggerhead", "Loggerhead-Kemp's ridley", "Kemp's ridley-Green")))
+
+#PLOT - COUNTS OF INTERACTIONS BY TYPE AND SP
+characteristics.plot <- ggplot(characteristics1, aes(x = SpeciesCombo, y = NumSegments, fill = InteractionType)) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  scale_y_continuous(limits = c(0, 27), breaks = c(5, 10, 15, 20, 25)) +
+  scale_fill_manual(values = c("Passive" = "#75BDFF", "Active" = "#FFD875", "Aggressive" = "#FF75AE"),
+                    breaks = c("Passive", "Active", "Aggressive")) +
+  geom_text(aes(label = NumSegments), position = position_stack(vjust = 0.5), color = "black", size = 6, family = "Segoe UI") +
+  labs(x = "Turtle Species", y = "Number of Interactions",
+    fill = "Interaction Type") + 
+  theme_classic() +
+  theme( #making background transparent
+    panel.background = element_rect(fill = "white", colour = NA), plot.background  = element_rect(fill = "white", colour = NA),
+    legend.background = element_rect(fill = "white", colour = NA), legend.key = element_rect(fill = "white", colour = NA),
+    axis.line = element_line(color = "black"), axis.ticks = element_line(color = "black"),
+    legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black")) +
+  theme(axis.title.x = element_text(size = 16, color = "black", margin = margin(t = 10, r = 0, b = 0, l = 0, unit = "pt")), 
+        axis.title.y = element_text(size = 16, color = "black", margin = margin(t = 0, r = 10, b = 0, l = 0, unit = "pt"))) +
+  theme(axis.text.x = element_text(size = 14, color = "black"), axis.text.y = element_text(size = 14, color = "black")) +
+  theme(legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black"),
+        text = element_text(family = "Segoe UI"),
+        legend.position = "bottom") +
+  scale_x_discrete(labels = c("Cc" = "Loggerhead", "Cm" = "Green")) +
+  geom_bracket(data = NULL, inherit.aes = FALSE, xmin = 0.6, xmax = 2.4, y.position = 27, label = "Intraspecific", label.size = 6) +
+  geom_bracket(data = NULL, inherit.aes = FALSE, xmin = 2.6, xmax = 6.4, y.position = 27, label = "Interspecific", label.size = 6)
+characteristics.plot
+
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/characteristics.plot_fulldata.png", characteristics.plot, 
+       width = 16, height = 8)
+
+```
+
+```{r}
+#Calculate interaction rate
+#count up total hours video footage
+hoursfootage <- data.ids.DBA %>% #filter for turtles with interactions
+  filter(DeployID %in% c("CC-11-11_CR10", "CC-11-11_CR12", "CC-11-11_CR13", "CC-11-11_CR14", "CC-11-11_CR15", "CC-11-11_CR17",
+                        "CC-11-11_CR19", "CC-11-11_CR21", "CC-11-11_CR5", "CC-11-11_CR6", "CC-11-11_CR7", "CC-11-11_CR8", "CC-11-11_CR9", 
+                        "CC-11-12_CR11", "CC-11-12_CR12", "CC-11-12_CR13", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR3",
+                        "CC-11-12_CR7", "CC-11-12_CR9", "CC-11-145_CR2", "CC-11-145_CR4", "CC-11-145_CR5")) %>%
+  group_by(DeployID, ObservID) %>%
+  summarise(
+    VideoLength = as.numeric(difftime(dplyr::first(ObsEndTime), dplyr::first(ObsStartTime), units = "secs")),
+    .groups = "drop") %>%
+  group_by(DeployID) %>%
+  summarise(
+    TotalFootageSecs = sum(VideoLength, na.rm = TRUE),
+    TotalFootageMins = TotalFootageSecs / 60,
+    TotalFootageHours = TotalFootageSecs / 3600,
+    .groups = "drop")
+hoursfootage
+
+sum(hoursfootage$TotalFootageMins)
+#5386.65 mins footage annotated for interactive turtles; 68 interactions/5386.65 mins = 0.013 ints/min
+```
+
+
+INTERACTION DURATION - Fig 5
+```{r}
+#FIG 5 FINAL SCRIPT HERE
+#Calc and plot min/mean/max length of interactions for all species
+data.ids.meanDBA <- data.ids.meanDBA %>%
+  mutate(InteractionType = factor(InteractionType, levels = c("Passive", "Active", "Aggressive"))) #put in x axis order
+
+#CALC min/mean/max length of interactions for LOGGERHEADS
+type.cc <- data.ids.meanDBA %>%
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle") %>%
+  filter(!DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17",
+                          "CC-11-12_CR18", "CC-11-12_CR19", "CC-11-145_CR2", "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5",
+                          "CC-11-145_CR6")) %>% 
+  group_by(DeployID, InteractionType) %>%
+  distinct(InteractionType, BehDuration) 
+lengthstats.cc <- type.cc %>%
+  group_by(InteractionType) %>%
+  distinct(InteractionType, BehDuration) %>%
+  summarise(
+    mean_duration = mean(BehDuration, na.rm = TRUE),
+    se_duration = sd(BehDuration, na.rm = TRUE) / sqrt(n()),
+    min_duration  = min(BehDuration, na.rm = TRUE),
+    max_duration  = max(BehDuration, na.rm = TRUE), .groups = "drop")
+
+#CALC min/mean/max length of interactions for GREENS
+type.cm <- data.ids.meanDBA %>%
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle") %>%
+  filter(DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR18", "CC-11-145_CR2",
+                         "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5", "CC-11-145_CR6")) %>%
+  group_by(DeployID, InteractionType) %>%
+  distinct(InteractionType, BehDuration) 
+lengthstats.cm <- type.cm %>%
+  group_by(InteractionType) %>%
+  distinct(InteractionType, BehDuration) %>%
+  summarise(
+    mean_duration = mean(BehDuration, na.rm = TRUE),
+    se_duration = sd(BehDuration, na.rm = TRUE) / sqrt(n()),
+    min_duration  = min(BehDuration, na.rm = TRUE),
+    max_duration  = max(BehDuration, na.rm = TRUE), .groups = "drop")
+
+#CALC min/mean/max length of interactions for KEMPS
+type.lk <- data.ids.meanDBA %>%
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle") %>%
+  filter(DeployID %in% c("CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR19")) %>%  
+  group_by(DeployID, InteractionType) %>%
+  distinct(InteractionType, BehDuration) 
+lengthstats.lk <- type.lk %>%
+  group_by(InteractionType) %>%
+  distinct(InteractionType, BehDuration) %>%
+  summarise(
+    mean_duration = mean(BehDuration, na.rm = TRUE),
+    se_duration = sd(BehDuration, na.rm = TRUE) / sqrt(n()),
+    min_duration  = min(BehDuration, na.rm = TRUE),
+    max_duration  = max(BehDuration, na.rm = TRUE), .groups = "drop")
+
+
+#COMBINE DATA FOR ALL SP INTO ONE DF
+time.all <- bind_rows(
+  type.cc %>% mutate(Species = "Loggerhead"),
+  type.cm %>% mutate(Species = "Green"),
+  type.lk %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) 
+
+#COMBINE STATS FOR ALL SP INTO ONE DF
+lengthstats.all <- bind_rows(
+  lengthstats.cc %>% mutate(Species = "Loggerhead"),
+  lengthstats.cm %>% mutate(Species = "Green"),
+  lengthstats.lk %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) 
+
+time.all
+lengthstats.all
+
+#descriptive stats
+#calc percent longer x int is than y int
+lengthstats.all %>%
+  filter(Species == "Green", InteractionType %in% c("Passive", "Active")) %>%
+  summarise(times_longer = (mean_duration[InteractionType == "Active"]) /
+                            mean_duration[InteractionType == "Passive"])
+
+```
+
+```{r}
+#comparing between species 
+interaction_length.no.lk <- time.all %>% #create a filtered df (eliminate Lk)
+  filter(!Species == "Kemp's ridley")
+
+#model
+time.m <- glmmTMB(BehDuration ~ InteractionType * Species + (1|DeployID), family = Gamma(link = "log"), data = interaction_length.no.lk) 
+summary(time.m)
+options(contrasts = c("contr.sum", "contr.poly"))
+Anova(time.m, type = 3) # stats for interaction duration across types; there was a significant difference in mean interaction duration across interaction types (Cc)
+emmeans(time.m, pairwise ~ InteractionType * Species, type = "response") 
+#checking model assumptions
+#data is all positive and right-skewed; model assumes this so fits well (gamma):
+hist(interaction_length.no.lk$BehDuration) #good
+#model also assumes that variance increases w mean (longer behaviors are more variable) (gamma)
+#assumes multiplicative effects of interaction type:
+ggplot(interaction_length.no.lk, aes(x = InteractionType, y = BehDuration)) +
+  geom_boxplot() +
+  scale_y_log10() #good
+time.m.test <- simulateResiduals(time.m)
+plot(time.m.test)
+table(interaction_length.no.lk$InteractionType) # passive has a much higher sample size (23 vs 8 or 11)- should be noted, but otherwise good
+#assumes normally distributed deployment-level random intercepts:
+ranef_vals <- ranef(time.m)$cond$DeployID[,1]
+qqnorm(ranef_vals)
+qqline(ranef_vals) #good; points follow line well
+testDispersion(res) #good; not significant
+
+
+#CREATE predicted beh duration model and plot predicted means 
+new.length <- interaction_length.no.lk %>%
+  ungroup() %>%
+  mutate(pred = predict(time.m, newdata = ., re.form = NULL, type = "response"))
+library(emmeans)
+length.ci <- emmeans(time.m, ~ InteractionType * Species, type = "response")
+length.df <- as.data.frame(length.ci)
+
+#plot predicted means over raw/actual data
+#arranging things with enough space to include Lk (otherwise there's overlap since Lk only has data for 1/3 layers)
+sp_levels   <- c("Loggerhead", "Green", "Kemp's ridley")
+type_levels <- levels(time.all$InteractionType)   # must match the factor levels of time.all
+
+length.df <- as.data.frame(length.ci) %>%
+  mutate(Species = factor(Species, levels = sp_levels),
+         InteractionType = factor(InteractionType, levels = type_levels),
+         xpos = as.numeric(InteractionType) + (as.numeric(Species) - 2) * dodge / 3)
+
+sp_colors <- c("Loggerhead" = "#FF7575", "Green" = "#5CDEAB", "Kemp's ridley" = "#C08DFF")
+
+intdur.predplot <- ggplot(time.all, aes(InteractionType, fill = Species)) +
+  geom_jitter(aes(y = BehDuration, color = Species), position = position_jitterdodge(jitter.width = 0.1, dodge.width = dodge),
+              alpha = 0.4, size = 1, show.legend = FALSE) +
+  geom_errorbar(data = length.df, aes(x = xpos, ymin = asymp.LCL, ymax = asymp.UCL), width = 0.08, show.legend = FALSE) +
+  geom_point(data = length.df, aes(x = xpos, y = response, fill = Species), shape = 21, size = 2, color = "black", show.legend = TRUE) +
+  #ylim(0, 110) +
+  labs(x = "Interaction Type", y = "Duration (secs)", color = "Sea Turtle Species") +
+  guides(fill = guide_legend(override.aes = list(shape = 21, color = "black", size = 2)), color = "none") +
+  scale_color_manual(values = sp_colors) +
+  scale_fill_manual(values = sp_colors, limits = sp_levels, drop = FALSE) +
+  theme_classic() +
+  theme( #making background transparent
+    panel.background = element_rect(fill = "white", colour = NA), plot.background  = element_rect(fill = "white", colour = NA),
+    legend.background = element_rect(fill = "white", colour = NA), legend.key = element_rect(fill = "white", colour = NA),
+    axis.line = element_line(color = "black"), axis.ticks = element_line(color = "black"),
+    legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black")) +
+  scale_x_discrete(labels = c("Aggressive Interaction" = "Aggressive\ninteraction",
+                              "Passive Interaction" = "Passive\ninteraction",
+                              "Active Interaction" = "Active\ninteraction")) +  
+  theme(  
+    axis.text.x = element_text(size = 14, color = "black"), #angle = 45, hjust = 1, 
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 16, color = "black", margin = margin(t = 10, r = 0, b = 0, l = 0)),
+    axis.title.y = element_text(size = 16, color = "black"),
+    text = element_text(family = "Segoe UI"),
+    legend.position = "bottom")
+
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/intdur.predplot.png", intdur.predplot, width = 8, height = 6, dpi = 300)
+
+```
+
+
+DBA - Fig 6
+```{r}
+#Energy budget using Mean DBA column- comparing VeDBA across behaviors, then modeling across interaction types for each sp (not Lk)
+#Mean DBA for each behavior for each turtle
+evaluate.meanDBA <- data.ids.meanDBA %>%
+    mutate(Behavior = case_when(
+    InteractionType == "Passive" ~ "Passive Interaction", InteractionType == "Active"  ~ "Active Interaction", 
+    InteractionType == "Aggressive" ~ "Aggressive Interaction", TRUE ~ Behavior)) %>%
+    mutate(Behavior = factor(Behavior, levels = c("Swimming", "Resting",  "Foraging", "Breathing", "Passive Interaction", 
+                                                "Active Interaction", "Aggressive Interaction", "Other"))) 
+
+
+#CALC min/mean/max DBA of interactions for LOGGERHEADS
+dba.cc <- evaluate.meanDBA %>%
+  filter(!DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR18",
+                          "CC-11-12_CR19", "CC-11-145_CR2", "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5", "CC-11-145_CR6")) %>%
+  filter(Behavior != "Other") %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  slice(1) %>%  # take just the first row per group
+  select(Behavior, Segment, MeanDBA, BehDuration) %>%
+  ungroup() %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  mutate(dbaXbehduration = MeanDBA * BehDuration) %>%
+  ungroup()
+dba.cc
+dbastats.cc <- dba.cc %>%
+  group_by(Behavior) %>%
+  summarise(
+    avg_DBA = mean(MeanDBA, na.rm = TRUE),
+    se_DBA = sd(MeanDBA, na.rm = TRUE) / sqrt(n())) %>%
+  ungroup()
+dbastats.cc
+
+#CALC min/mean/max DBA of interactions for GREENS
+dba.cm <- evaluate.meanDBA %>%
+  filter(DeployID %in% c("CC-11-12_CR12", "CC-11-12_CR15", "CC-11-12_CR16", "CC-11-12_CR17", "CC-11-12_CR18", "CC-11-145_CR2", "CC-11-145_CR3", "CC-11-145_CR4", "CC-11-145_CR5", "CC-11-145_CR6")) %>%
+  filter(Behavior != "Other") %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  slice(1) %>%  # take just the first row per group
+  select(Behavior, Segment, MeanDBA, BehDuration) %>%
+  ungroup() %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  mutate(dbaXbehduration = MeanDBA * BehDuration) %>%
+  ungroup()
+dba.cm
+dbastats.cm <- dba.cm %>%
+  group_by(Behavior) %>%
+  summarise(
+    avg_DBA = mean(MeanDBA, na.rm = TRUE),
+    se_DBA = sd(MeanDBA, na.rm = TRUE) / sqrt(n())) %>%
+  ungroup()
+dbastats.cm
+
+#CALC min/mean/max DBA of interactions for KEMPS
+dba.lk <- evaluate.meanDBA %>%
+  filter(DeployID %in% c("CC-11-12_CR13", "CC-11-12_CR14", "CC-11-12_CR19")) %>%
+  filter(Behavior != "Other") %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  slice(1) %>%  # take just the first row per group
+  select(Behavior, Segment, MeanDBA, BehDuration) %>%
+  ungroup() %>%
+  group_by(DeployID, Behavior, Segment) %>%
+  mutate(dbaXbehduration = MeanDBA * BehDuration) %>%
+  ungroup()
+dba.lk
+dbastats.lk <- dba.lk %>%
+  group_by(Behavior) %>%
+  summarise(
+    avg_DBA = mean(MeanDBA, na.rm = TRUE),
+    se_DBA = sd(MeanDBA, na.rm = TRUE) / sqrt(n())) %>%
+  ungroup()
+dbastats.lk
+
+#PUT ALL SP TOGETHER IN A DF
+dba.all <- bind_rows(
+  dba.cc %>% mutate(Species = "Loggerhead"),
+  dba.cm %>% mutate(Species = "Green"),
+  dba.lk %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) %>%
+  mutate(Behavior = factor(Behavior, levels = c("Swimming", "Resting",  "Foraging", "Breathing", "Passive Interaction", 
+                                                "Active Interaction", "Aggressive Interaction")))
+#PUT ALL SP STATS TOGETHER IN A DF
+dbastats.all <- bind_rows(
+  dbastats.cc %>% mutate(Species = "Loggerhead"),
+  dbastats.cm %>% mutate(Species = "Green"),
+  dbastats.lk %>% mutate(Species = "Kemp's ridley")) %>%
+  mutate(Species = factor(Species, levels = c("Loggerhead", "Green", "Kemp's ridley"))) %>%
+  mutate(Behavior = factor(Behavior, levels = c("Swimming", "Resting",  "Foraging", "Breathing", "Passive Interaction", 
+                                                "Active Interaction", "Aggressive Interaction")))
+
+#descriptive stats
+#calc percent higher x dba is than y dba
+dbastats.all %>%
+  filter(Species == "Loggerhead", Behavior %in% c("Aggressive Interaction", "Passive Interaction")) %>%
+  summarise(pct_higher = (avg_DBA[Behavior == "Aggressive Interaction"] -
+                          avg_DBA[Behavior == "Passive Interaction"]) /
+                          avg_DBA[Behavior == "Passive Interaction"] * 100)
+
+#calc percent lower x dba is than y dba
+dbastats.all %>%
+  filter(Species == "Green", Behavior %in% c("Passive Interaction", "Swimming")) %>%
+  summarise(pct_lower = (avg_DBA[Behavior == "Passive Interaction"] -
+                          avg_DBA[Behavior == "Swimming"]) /
+                          avg_DBA[Behavior == "Swimming"] * 100)
+
+```
+
+```{r}
+#FIG 6 PUB PLOT CODE HERE!
+#MODELING DBA
+#predicting mean DBA and then plotting predicted values
+#unforch cant compare sp bc of biological differences due to major size class differences
+
+#CC df
+dba.allcc <- dba.all %>%
+  filter(Species == "Loggerhead") 
+dba.allcc2 <- dba.allcc %>%
+  mutate(BehDuration = median(dba.allcc$BehDuration))
+#cm DF
+dba.allcm <- dba.all %>%
+  filter(Species == "Green") 
+dba.allcm2 <- dba.allcm %>%
+  mutate(BehDuration = median(dba.allcm$BehDuration))
+
+#CC model
+options(contrasts = c("contr.sum", "contr.poly"))
+dba.m.cc <- glmmTMB(MeanDBA ~ Behavior + offset(log(BehDuration)) + (1|DeployID), family = t_family(link = 'log'), data = dba.allcc2)
+Anova(dba.m.cc, type = 3)
+#Post hoc to see which behaviors were statistically different from each other
+#Behavior differences within each species
+emm_behav.cc <- emmeans(dba.m.cc, ~ Behavior) #can no longer use emmeans(dba.m.cc, ~ Behavior | Species)
+pairs(emm_behav.cc)
+#Checking model assumptions
+#model assumes that MeanDBA is positive and continuous
+summary(dba.allcc2$MeanDBA)
+any(dba.allcc2$MeanDBA <= 0) #good
+#model assumes normality on log scale
+test.dba.m.cc <- simulateResiduals(fittedModel = dba.m.cc, n = 250, plot = T)
+summary(dba.m.cc) #looks good
+plot(test.dba.m.cc)
+#normal distribution of random effects
+ranef(dba.m.cc)$cond$DeployID
+qqnorm(ranef(dba.m.cc)$cond$DeployID[[1]])
+qqline(ranef(dba.m.cc)$cond$DeployID[[1]]) #good, mostly linear
+#no overdispersion:
+library(DHARMa)
+res <- simulateResiduals(dba.m.cc)
+testDispersion(res) #good; not significant
+
+#CM Model
+options(contrasts = c("contr.sum", "contr.poly"))
+dba.m.cm <- glmmTMB(MeanDBA ~ Behavior + offset(log(BehDuration)) + (1|DeployID), family = t_family(link = 'log'), data = dba.allcm2)
+Anova(dba.m.cm, type = 3)
+#Post hoc to see which behaviors were statistically different from each other
+#Behavior differences within each species
+emm_behav.cm <- emmeans(dba.m.cm, ~ Behavior)
+pairs(emm_behav.cm)
+#Checking model assumptions
+#model assumes that MeanDBA is positive and continuous
+summary(dba.allcm2$MeanDBA)
+any(dba.allcm2$MeanDBA <= 0) #good
+#model assumes normality on log scale
+test.dba.m.cm <- simulateResiduals(fittedModel = dba.m.cm, n = 250, plot = T)
+summary(dba.m.cm) #looks good
+plot(test.dba.m.cm)
+#normal distribution of random effects
+ranef(dba.m.cm)$cond$DeployID
+qqnorm(ranef(dba.m.cm)$cond$DeployID[[1]])
+qqline(ranef(dba.m.cm)$cond$DeployID[[1]]) #good, mostly linear
+#no overdispersion:
+library(DHARMa)
+res <- simulateResiduals(dba.m.cm)
+testDispersion(res) #good; not significant
+
+```
+
+```{r}
+#Predicted DBA model
+#CC CREATE predicted dba model and plot predicted means 
+new.dba.cc <- dba.allcc2 %>%
+  mutate(pred = predict(dba.m.cc, newdata = ., re.form = NULL, type = "response"))
+library(emmeans)
+dba.ci.cc <- emmeans(dba.m.cc, ~ Behavior, type = "response",
+               offset = log(median(dba.allcc2$BehDuration)))
+dba.ci.df.cc <- as.data.frame(dba.ci.cc)
+dba.ci.df.cc
+
+#CM CREATE predicted dba model and plot predicted means 
+new.dba.cm <- dba.allcm2 %>%
+  mutate(pred = predict(dba.m.cm, newdata = ., re.form = NULL, type = "response"))
+library(emmeans)
+dba.ci.cm <- emmeans(dba.m.cm, ~ Behavior, type = "response",
+               offset = log(median(dba.allcm2$BehDuration)))
+dba.ci.df.cm <- as.data.frame(dba.ci.cm)
+dba.ci.df.cm
+
+#Set levels (this is for plotting to keep the plot clean/data aligned properly)
+sp_levels  <- c("Loggerhead", "Green", "Kemp's ridley")
+beh_levels <- c("Swimming", "Resting", "Foraging", "Breathing", "Passive Interaction", "Active Interaction", "Aggressive Interaction")
+
+#set the same factor levels for raw/actual data
+dba.all <- dba.all %>%
+  mutate(Species  = factor(Species, levels = sp_levels),
+         Behavior = factor(Behavior, levels = beh_levels))
+
+#Helper: tag a model's output with its species and compute the x position (this is for plotting to keep the plot clean/data aligned properly)
+tag_model <- function(df, sp) {
+  df %>%
+    mutate(Species  = factor(sp, levels = sp_levels),
+           Behavior = factor(Behavior, levels = beh_levels),
+           xpos = as.numeric(Behavior) + (as.numeric(Species) - 2) * dodge / 3)}
+
+#Predicted means (one row per Behavior per model)
+pred.all <- bind_rows(
+  new.dba.cc %>% group_by(Behavior) %>% summarise(pred = mean(pred), .groups = "drop") %>% tag_model("Loggerhead"),
+  new.dba.cm %>% group_by(Behavior) %>% summarise(pred = mean(pred), .groups = "drop") %>% tag_model("Green"))
+
+#Confidence intervals
+ci.all <- bind_rows(
+  tag_model(dba.ci.df.cc, "Loggerhead"),
+  tag_model(dba.ci.df.cm, "Green"))
+
+#PLOT predicted means on top of actual/raw data
+sp_colors <- c("Loggerhead" = "#FF7575", "Green" = "#5CDEAB", "Kemp's ridley" = "#C08DFF")
+
+predDBA.plot <- ggplot(dba.all, aes(Behavior)) +
+  geom_jitter(aes(y = MeanDBA, color = Species), position = position_jitterdodge(jitter.width = 0.1, dodge.width = dodge),
+              alpha = 0.4, size = 1, show.legend = FALSE) +
+  geom_errorbar(data = ci.all, aes(x = xpos, ymin = asymp.LCL, ymax = asymp.UCL), width = 0.08) +
+  geom_point(data = pred.all, aes(x = xpos, y = pred, fill = Species), shape = 21, size = 2, color = "black", show.legend = TRUE) +
+  scale_color_manual(values = sp_colors) +
+  scale_fill_manual(values = sp_colors, limits = sp_levels, drop = FALSE) +
+  guides(fill = guide_legend(override.aes = list(shape = 21, color = "black", size = 2))) +
+  labs(x = NULL, y = expression("DBA" ~ (m/s^2)), color = "Sea Turtle Species", fill = "Sea Turtle Species") +
+  theme_classic() +
+  theme( #making background transparent
+    panel.background = element_rect(fill = "white", colour = NA), plot.background  = element_rect(fill = "white", colour = NA),
+    legend.background = element_rect(fill = "white", colour = NA), legend.key = element_rect(fill = "white", colour = NA),
+    axis.line = element_line(color = "black"), axis.ticks = element_line(color = "black"),
+    legend.text = element_text(size = 14, color = "black"), legend.title = element_text(size = 14, color = "black")) +
+  scale_x_discrete(labels = c("Aggressive Interaction" = "Aggressive\ninteraction",
+                              "Passive Interaction" = "Passive\ninteraction",
+                              "Active Interaction" = "Active\ninteraction")) +
+  theme(  
+    axis.text.x = element_text(size = 14, color = "black"), #angle = 45, hjust = 1, 
+    axis.text.y = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 16, color = "black"),
+    axis.title.y = element_text(size = 16, color = "black"),
+    text = element_text(family = "Segoe UI"),
+    legend.position = "bottom")
+predDBA.plot
+ggsave("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/Figures/predDBAplot_fulldata3.png", predDBA.plot, width = 8, height = 6, dpi = 300)
+
+```
+

@@ -1,0 +1,895 @@
+---
+title: "Interactions_DataCleaningProcessingScript"
+output: html_document
+date: "2026-10-07"
+---
+```{r}
+#Reading in, handling, cleaning data.
+
+#library(readxl) #read in xlsx files
+library(tidyr) #data handling
+library(plyr)
+library(dplyr) #data wrangling
+library(tibble)
+library(lubridate)
+
+#Movement and spatial analyses
+
+library(sf)
+library(sp)
+library(raster)
+
+library(adehabitatLT)
+library(adehabitatHR) #analyses of home ranges and other movement code
+
+library(diveMove)
+library(tagtools)
+library(caTools)
+
+library(bioRad) #For sunrise and sunset
+
+#Statistical analyses
+
+library(car) #Anova() function
+library(glmmTMB) #generalized linear mixed models
+library(MuMIn) #dredge() function for model selection
+library(DHARMa) #assumption checking
+library(performance) #assumption checking
+library(emmeans) #marginal means estimation
+library(multcomp) #post-hoc multiple comparisons
+
+#Plotting and mapping
+
+library(ggplot2) #visualization
+library(ggpubr) #for ggarrange() etc.
+library(gridExtra) #has a function for comparing ggplot plots side by side.
+library(RColorBrewer) #nice palettes
+library(wesanderson)
+
+library(ggmap) #use this for plotting maps
+library(maps)
+library(mapdata)
+library(rworldmap)
+#library(maptools)
+
+library(hms)
+library(ggalt)
+
+#Dealing with conflicts
+
+library(conflicted)
+conflict_prefer("rename", "dplyr")
+conflict_prefer("group_by", "dplyr")
+conflict_prefer("filter", "dplyr")
+conflict_prefer("summarise", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("mutate", "dplyr")
+conflict_prefer("count", "dplyr")
+conflict_prefer("contr.sum", "stats")
+conflict_prefer("id", "adehabitatLT")
+conflict_prefer("lag", "dplyr")
+conflicts_prefer(dplyr::arrange)
+
+#install.packages("fuzzyjoin")
+
+#install.packages("formattable")
+
+#install.packages('extrafont')
+library(extrafont)
+
+#install.packages("showtext")
+library(showtext)
+library(ggplot2)
+```
+
+
+Start behavior data
+
+```{r}
+#merge interactions lists- do not run again unless new lists added. This is ALL the lists for ALL turtles from 24 hr CATS deployments, including those ending in _interaction and those without an interaction. 
+
+library(dplyr)  
+library(stringr)
+
+input_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/All Annotations for Interactions Turtles"
+output_file <- "merged_interactions_annotations.csv"
+
+annotation_files <- list.files(path = input_directory, pattern = "\\.csv$", full.names = TRUE)
+
+merged_interactions_annotations <- bind_rows(
+  lapply(annotation_files, function(file) {
+    df <- read.csv(file, stringsAsFactors = FALSE)
+    df[] <- lapply(df, as.character)
+    return(df)})) 
+
+merged_interactions_annotations <- merged_interactions_annotations %>%
+  mutate(Observation.id = str_replace(Observation.id, "_interaction$", "")) 
+
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "merged_interactions_annotations.csv") #this will be all lists for each turtle that was tagged. will then filter out just the videos with interactions in the list, but in order to configure times, creating this mass list of all lists
+
+write.csv(merged_interactions_annotations, output_file, row.names = FALSE)
+
+```
+
+```{r}
+interactions.data <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/merged_interactions_annotations.csv") 
+
+library(dplyr)
+library(stringr)
+library(purrr)
+library(lubridate)
+library(zoo)
+
+interactions.data <- interactions.data %>%
+  rename(ObservID = "Observation.id", BehavCat = "Behavioral.category") %>%
+  group_by(ObservID) %>%
+  mutate(ObservID = str_replace(ObservID, "_interaction$", "")) %>% 
+  mutate(VidNum = row_number()) %>%
+  rename(TimeStamp = Time) %>%   #rename column Time to TimeStamp
+  
+#create DeployID column using Observation.id info minus the numbers at the end specifying which video for a deployment
+  mutate(DeployID = str_extract(ObservID, "^[^_]*_[^_]*")) %>%
+
+#Adding in a column for video dates, extracting date from video file name
+ mutate(date_data = str_extract(Source, "\\d{8}")) %>%
+  mutate(Date = as.Date(date_data, format = "%Y%m%d")) %>%
+  select(-date_data) %>%
+    
+#move DeployID column to be first column
+  select(DeployID, everything()) %>% 
+
+#Make sure Time is always first behavior to avoid issues with alphabetical reordering  
+  group_by(ObservID) %>%
+  arrange(Behavior != "Time", .by_group = TRUE) %>%
+  ungroup() %>%
+  
+#Create new column Time to add time stamps formatted as actual time of day, hh:mm:ss.sss
+  mutate(Time = if_else( 
+    Behavior == "Time" & BehavCat == "Record Keeping",
+    str_replace_all(str_pad(as.character(Modifier..1), 9, pad = "0"), 
+    "(\\d{2})(\\d{2})(\\d{2})(\\d{3})", "\\1:\\2:\\3"), NA_character_)) %>%
+
+#Create a start time column  
+  mutate(StartTime_raw = if_else(
+    Behavior == "Time",
+    str_pad(as.character(Modifier..1), 9, pad = "0"), NA_character_)) %>%
+  mutate(StartTime_formatted = if_else(
+    !is.na(StartTime_raw),
+    str_replace(StartTime_raw, "(\\d{2})(\\d{2})(\\d{2})(\\d{3})", "\\1:\\2:\\3"),NA_character_)) %>%
+  group_by(ObservID) %>%
+  mutate(ObservStartTime = dplyr::first(na.omit(StartTime_formatted))) %>%
+  ungroup() %>%
+  select(-StartTime_raw, -StartTime_formatted) %>%
+  
+#Create an end time column
+  mutate(Behavior = if_else(Behavior == "End time", "End Time", Behavior)) %>%
+  mutate(ObservEndTime_temp = if_else(
+    Behavior == "End Time" & BehavCat == "Record Keeping" & !is.na(Modifier..1),
+    str_replace_all(str_pad(as.character(Modifier..1), 9, pad = "0"),
+      "(\\d{2})(\\d{2})(\\d{2})(\\d{3})", "\\1:\\2:\\3"),NA_character_)) %>%
+  group_by(ObservID) %>%
+  mutate(ObservEndTime = dplyr::first(na.omit(ObservEndTime_temp))) %>%
+  ungroup() %>%
+  mutate(ObservEndTime = if_else(is.na(ObservEndTime), "", ObservEndTime)) %>%
+  select(-ObservEndTime_temp)
+  
+#Create a release time column; use later to remove first 3 hours of data for *capture and handling* purposes
+library(readr)
+fallback_data <- read_csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/MissingReleaseTimes.csv", 
+                          col_types = cols(DeployID = col_character(), ReleaseTime = col_character(), ReleaseDate = col_character())) %>%
+  mutate(ReleaseTime_fallback = format(parse_time(ReleaseTime, locale = locale(tz = "UTC")), "%H:%M:%S"),
+         ReleaseDate_fallback = as.Date(ReleaseDate, format = "%Y%m%d"),DeployID = trimws(as.character(DeployID))) %>%
+  select(DeployID, ReleaseTime_fallback, ReleaseDate_fallback)
+
+release_dates <- interactions.data %>%
+  mutate(DeployID = trimws(as.character(DeployID))) %>%
+  mutate(VideoNum = as.integer(str_extract(ObservID, "(?<=_)(\\d+)$"))) %>%
+  filter(Behavior == "Release Time" & BehavCat == "Record Keeping") %>%
+  group_by(DeployID) %>%
+  slice_min(order_by = VideoNum, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    Source = as.character(trimws(Source)),
+    Date_str = map_chr(str_extract_all(Source, "20\\d{6}"), ~ tail(.x, 1)),
+    Date_formatted = as.Date(Date_str, format = "%Y%m%d")) %>%
+  select(DeployID, Release_Date = Date_formatted)
+
+interactions.data2 <- interactions.data %>%
+  mutate(
+    ReleaseTime_raw = if_else(
+      Behavior == "Release Time" & BehavCat == "Record Keeping",
+      str_extract(as.character(Modifier..1), "^\\d{9}"), NA_character_),
+    ReleaseTime_str = if_else(
+      !is.na(ReleaseTime_raw),
+      str_replace(
+        substr(ReleaseTime_raw, 1, 6), # HHMMSS
+        "(\\d{2})(\\d{2})(\\d{2})", 
+        "\\1:\\2:\\3"), NA_character_)) %>%
+  left_join(release_dates, by = "DeployID") %>%
+  group_by(DeployID) %>%
+  mutate(
+    ReleaseTime_str = dplyr::first(na.omit(ReleaseTime_str)),
+    Release_Date = dplyr::first(na.omit(Release_Date))) %>%
+  ungroup()
+
+interactions.data2 <- interactions.data2 %>%
+  left_join(fallback_data, by = "DeployID") %>%
+  mutate(
+    FinalDate = coalesce(Release_Date, ReleaseDate_fallback),
+    FinalTime_str = coalesce(ReleaseTime_str, ReleaseTime_fallback),
+    ReleaseTime = as.POSIXct(
+      paste(FinalDate, FinalTime_str),
+      format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  select(-ReleaseTime_raw, -ReleaseTime_str, -ReleaseTime_fallback, -Release_Date, -ReleaseDate_fallback, -FinalTime_str, -FinalDate)
+
+#Below: remove unnecessary columns
+interactions.data3 <- interactions.data2 %>%
+  select(-"Description", -"Observation.type", -"Media.file.name", -"Image.file.path", -"Comment", 
+         -"Observation.date", -"Image.index") %>%
+
+# Using the time stamps noted in the record keeping rows, and adding seconds from TimeStamp, 
+  mutate(
+    reference_time = case_when(Behavior == "Time" ~ as.numeric(hms::as_hms(Time)), TRUE ~ NA_real_),
+    reference_time = zoo::na.locf(reference_time, na.rm = FALSE), 
+    reference_time = zoo::na.locf(reference_time, na.rm = FALSE, fromLast = TRUE), 
+    Time = case_when(TimeStamp == 0 & is.na(Time) ~ as.character(as_hms(reference_time)), TRUE ~ Time),
+    Time = case_when(!is.na(TimeStamp) & is.na(Time) ~ as.character(as_hms(reference_time + TimeStamp)), TRUE ~ Time)) %>%
+  
+  select(-reference_time) %>% #remove reference time column (was only created for addition purposes)
+  mutate(Modifier..1 = if_else(BehavCat == "Record Keeping", "", Modifier..1)) %>%
+  
+#Create DT column
+  mutate(Time = str_pad(Time, width = 8, side = "left", pad = "0")) %>%  
+  mutate(Date = format(Date, "%m/%d/%Y")) %>%
+  mutate(DT = paste(Date, Time)) %>%
+  mutate(DT = mdy_hms(DT)) %>%
+  select(-Date, -Time, -TimeStamp) %>%
+  relocate(DT, .after = 2) %>%
+
+#Format End Time column
+  mutate(DateOnly = as.Date(DT),
+    ObsEndTime = as.POSIXct(paste(DateOnly, ObservEndTime), format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  select(-DateOnly) %>%
+
+#Format Start Time column
+  mutate(DateOnly = as.Date(DT),
+    ObsStartTime = as.POSIXct(paste(DateOnly, ObservStartTime), format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  select(-DateOnly) %>%
+  
+#Adjust times for 2 feb deployments that were not adjusted for the time change before deploying
+  mutate(DT = if_else(DeployID %in% c("CC-11-11_CR12", "CC-11-12_CR12"), DT - hours(1), DT)) %>%
+  mutate(ReleaseTime = if_else(DeployID %in% c("CC-11-11_CR12", "CC-11-12_CR12"), ReleaseTime - hours(1), ReleaseTime)) %>%
+  mutate(ObsStartTime = if_else(DeployID %in% c("CC-11-11_CR12", "CC-11-12_CR12"), ObsStartTime - hours(1), ObsStartTime)) %>%
+  mutate(ObsEndTime = if_else(DeployID %in% c("CC-11-11_CR12", "CC-11-12_CR12"), ObsEndTime - hours(1), ObsEndTime)) %>%
+#Adjust times for CC-11-145_CR1 deployment that was mistakenly in UTC +5 instead of UTC -4
+  mutate(DT = if_else(DeployID %in% c("CC-11-145_CR1"), DT - hours(9), DT)) %>%
+  mutate(ReleaseTime = if_else(DeployID %in% c("CC-11-145_CR1"), ReleaseTime - hours(9), ReleaseTime)) %>%
+  mutate(ObsStartTime = if_else(DeployID %in% c("CC-11-145_CR1"), ObsStartTime - hours(9), ObsStartTime)) %>%
+  mutate(ObsEndTime = if_else(DeployID %in% c("CC-11-145_CR1"), ObsEndTime - hours(9), ObsEndTime)) 
+  
+interactions.data4 <- interactions.data3 %>%      
+#Changing column names of modifiers to make sense and label what they actually are and separating modifiers by categories
+  rename(LifeStageSubject = Modifier..6, SexSubject = Modifier..7, BodyConditionSubject = Modifier..8, 
+         SignsDiseaseInjurySubject = Modifier..9, AggressionInitiator = Modifier..10) %>%
+  mutate(LifeStageSubject = ifelse(is.na(LifeStageSubject), "", LifeStageSubject)) %>%
+  mutate(SexSubject = ifelse(is.na(SexSubject), "", SexSubject)) %>%
+  mutate(BodyConditionSubject = ifelse(is.na(BodyConditionSubject), "", BodyConditionSubject)) %>%
+  mutate(SignsDiseaseInjurySubject = ifelse(is.na(SignsDiseaseInjurySubject), "", SignsDiseaseInjurySubject)) %>%
+  mutate(AggressionInitiator = ifelse(is.na(AggressionInitiator), "", AggressionInitiator)) %>%  
+  
+  mutate(SpeciesSubject = if_else(Modifier..5 %in% c("Cc", "Cm", "Lk"), Modifier..5, ""), 
+         Modifier..5 = if_else(Modifier..5 %in% c("Cc", "Cm", "Lk"), "", Modifier..5), 
+         SpeciesSubject = ifelse(is.na(SpeciesSubject), "", SpeciesSubject)) %>%
+  
+  rename(InteractionTimeStamps = Modifier..5) %>%
+  mutate(InteractionTimeStamps = ifelse(is.na(InteractionTimeStamps), "", InteractionTimeStamps)) %>%
+
+#modifiers for interaction bottom type at start vs end  
+  mutate(across(where(is.character), ~ str_replace_all(., "Hard bottom", "Hard Bottom"))) %>%
+  mutate(across(where(is.character), ~ str_replace_all(., "Sandy bottom", "Sandy Bottom"))) %>%
+  mutate(InteractionBottomTypeStart = if_else(Behavior == "Interaction Start" & Modifier..1 %in% 
+                                                c("Hard Bottom", "Seagrass", "Sandy Bottom", "Mixed", "Unclear"), Modifier..1, ""), 
+         Modifier..1 = if_else(Behavior == "Interaction Start" & Modifier..1 %in% c("Hard Bottom", "Seagrass", "Sandy Bottom", "Mixed", "Unclear"), "",
+                               Modifier..1)) %>%
+  mutate(InteractionBottomTypeEnd = if_else(Behavior == "Interaction End" & Modifier..1 %in% 
+                                              c("Hard Bottom", "Seagrass", "Sandy Bottom", "Mixed", "Unclear"), Modifier..1, ""), 
+         Modifier..1 = if_else(Behavior == "Interaction End" & Modifier..1 %in% c("Hard Bottom", "Seagrass", "Sandy Bottom", "Mixed", "Unclear"), "",
+                               Modifier..1)) %>%
+
+  mutate(ForagingLocation = if_else(Modifier..1 %in% c("Benthic", "Surface", "Pelagic"), Modifier..1, ""), 
+         Modifier..1 = if_else(Modifier..1 %in% c("Benthic", "Surface", "Pelagic"), "", Modifier..1)) %>%
+  mutate(VigilanceAbort = if_else(Modifier..1 %in% c("Yes", "No"), Modifier..1, ""), 
+         Modifier..1 = if_else(Modifier..1 %in% c("Yes", "No"), "", Modifier..1)) %>%
+  rename(InteractionTaxa = Modifier..1) %>%
+  
+  mutate(SpeciesInteractingWith = if_else(Modifier..2 %in% c("Cc", "Cm", "Lk", "Unknown"), Modifier..2, ""), 
+         Modifier..2 = if_else(Modifier..2 %in% c("Cc", "Cm", "Lk", "Unknown"), "", Modifier..2)) %>%
+
+#Modifiers for interaction habitat type at start vs end
+  mutate(InteractionHabitatStart = if_else(Behavior == "Interaction Start" & Modifier..2 %in% c("Structured", "Unstructured"), Modifier..2, ""), 
+         Modifier..2 = if_else(Behavior == "Interaction Start" & Modifier..2 %in% c("Structured", "Unstructured"), "", Modifier..2)) %>%
+  mutate(InteractionHabitatEnd = if_else(Behavior == "Interaction End" & Modifier..2 %in% c("Structured", "Unstructured"), Modifier..2, ""), 
+         Modifier..2 = if_else(Behavior == "Interaction Start" & Modifier..2 %in% c("Structured", "Unstructured"), "", Modifier..2)) %>%
+
+#modifiers for interaction depth at start vs end  
+  mutate(InteractionDepthStart = if_else(Behavior == "Interaction Start" & Modifier..3 %in% c("Bottom", "Midwater", "Surface"), Modifier..3, ""), 
+         Modifier..3 = if_else(Behavior == "Interaction Start" & Modifier..3 %in% c("Bottom", "Midwater", "Surface"), "", Modifier..3)) %>%
+  mutate(InteractionDepthEnd = if_else(Behavior == "Interaction End" & Modifier..3 %in% c("Bottom", "Midwater", "Surface"), Modifier..3, ""), 
+         Modifier..3 = if_else(Behavior == "Interaction End" & Modifier..3 %in% c("Bottom", "Midwater", "Surface"), "", Modifier..3)) %>%
+  
+  rename(InteractiveBehaviorsSubject = Modifier..3) %>%
+  mutate(InteractiveBehaviorsSubject = ifelse(is.na(InteractiveBehaviorsSubject), "", InteractiveBehaviorsSubject)) %>%
+  
+  mutate(InteractionWinner = if_else(Modifier..4 %in% c("CATS turtle", "None", "Observed turtle 1", "Observed turtle 2", "Observed turtle 3", 
+                                                  "Observed turtle 4", "Observed turtle 5"), Modifier..4, ""), 
+         Modifier..4 = if_else(Modifier..4 %in% c("CATS turtle", "None", "Observed turtle 1", "Observed turtle 2", "Observed turtle 3", 
+                                                  "Observed turtle 4", "Observed turtle 5"), "", Modifier..4)) %>%
+  mutate(NextBehavior = if_else(Behavior == "Interaction End" & Modifier..4 %in% c("Active swim", "Passive swim", "Rest", "Breathing", 
+                                                                                   "Vigilance", "Forage", "Other", "Searching"), Modifier..4, ""), 
+         Modifier..4 = if_else(Behavior == "Interaction End" & Modifier..4 %in% c("Active swim", "Passive swim", "Rest", "Breathing", 
+                                                                                   "Vigilance", "Forage", "Other", "Searching"), "", Modifier..4)) %>% 
+
+  rename(PreviousBehavior = Modifier..4) %>%
+  mutate(PreviousBehavior = ifelse(is.na(PreviousBehavior), "", PreviousBehavior)) %>%
+  
+  mutate(Subject = ifelse(is.na(Subject), "", Subject)) %>%  #Changing any NA subject to just be blank for consistency
+  
+#Remove columns I don't need for interactions stuff
+  select(-"VigilanceAbort", -"ForagingLocation", -"InteractionTaxa") %>%
+    
+#Reorganizing columns
+  select(DeployID, ObservID, DT, ObsStartTime, ObsEndTime, Subject, ReleaseTime, FPS, Behavior, BehavCat, InteractiveBehaviorsSubject, PreviousBehavior, 
+         NextBehavior, LifeStageSubject, SexSubject, BodyConditionSubject, SignsDiseaseInjurySubject, SpeciesSubject, SpeciesInteractingWith,
+         InteractionWinner, AggressionInitiator, InteractionBottomTypeStart, InteractionBottomTypeEnd, InteractionHabitatStart, InteractionHabitatEnd,
+         InteractionDepthStart, InteractionDepthEnd, InteractionTimeStamps, Behavior.type, Source, Observation.duration, Media.duration..s.) %>%
+  
+  ungroup() %>%
+
+#Clear out any non-turtle interactions  
+  filter(!(Behavior == "Species Interaction" & (is.na(SpeciesSubject) | SpeciesSubject == "")))
+
+interactions.data4
+```
+
+```{r}
+#Pasting interaction start and end info into matching rows for the same interaction 
+interaction.info <- interactions.data4 %>%
+  filter(Behavior %in% c("Interaction Start", "Interaction End"), Subject == "") %>%
+  select(
+    ObservID, DT, Behavior,
+    PreviousBehavior, NextBehavior,
+    InteractionHabitatStart, InteractionHabitatEnd,
+    InteractionBottomTypeStart, InteractionBottomTypeEnd,
+    InteractionDepthStart, InteractionDepthEnd)
+
+interactions.data5 <- interactions.data4 %>%
+  left_join(interaction.info, by = c("ObservID", "DT"), suffix = c("", ".copy")) %>%
+  mutate(
+    PreviousBehavior = ifelse(Behavior == "Species Interaction" & PreviousBehavior == "", PreviousBehavior.copy, PreviousBehavior),
+    NextBehavior = ifelse(Behavior == "Species Interaction" & NextBehavior == "", NextBehavior.copy, NextBehavior),
+    InteractionHabitatStart = ifelse(Behavior == "Species Interaction" & InteractionHabitatStart == "", InteractionHabitatStart.copy,
+                                     InteractionHabitatStart),
+    InteractionHabitatEnd = ifelse(Behavior == "Species Interaction" & InteractionHabitatEnd == "", InteractionHabitatEnd.copy,
+                                   InteractionHabitatEnd),
+    InteractionBottomTypeStart = ifelse(Behavior == "Species Interaction" & InteractionBottomTypeStart == "",
+                                        InteractionBottomTypeStart.copy, InteractionBottomTypeStart),
+    InteractionBottomTypeEnd = ifelse(Behavior == "Species Interaction" & InteractionBottomTypeEnd == "", InteractionBottomTypeEnd.copy,
+                                      InteractionBottomTypeEnd),
+    InteractionDepthStart = ifelse(Behavior == "Species Interaction" & InteractionDepthStart == "", InteractionDepthStart.copy,
+                                   InteractionDepthStart),
+    InteractionDepthEnd = ifelse(Behavior == "Species Interaction" & InteractionDepthEnd == "", InteractionDepthEnd.copy,
+                                 InteractionDepthEnd)) %>%
+  select(-ends_with(".copy")) %>%
+  mutate(across(where(is.character), ~ifelse(is.na(.), "", .))) 
+
+interaction.info
+interactions.data5
+```
+
+```{r}
+#Copy info from start to stop interaction rows so it will show up when data is transformed from long to wide format
+interaction_rows <- interactions.data5 %>%
+  filter(Behavior == "Species Interaction", Subject == "") %>%
+  arrange(ObservID, DT)
+
+interaction_rows <- interaction_rows %>%
+  mutate(InteractionGroupID = cumsum(Behavior.type == "START"))
+
+starts <- interaction_rows %>%
+  filter(Behavior.type == "START") %>%
+  select(
+    ObservID, InteractionGroupID,
+    PreviousBehavior, InteractionBottomTypeStart,
+    InteractionHabitatStart, InteractionDepthStart)
+
+stops <- interaction_rows %>%
+  filter(Behavior.type == "STOP")
+
+stops_filled <- stops %>%
+  left_join(starts, by = c("ObservID", "InteractionGroupID"), suffix = c("", ".start")) %>%
+  mutate(
+    PreviousBehavior = ifelse(PreviousBehavior == "", PreviousBehavior.start, PreviousBehavior),
+    InteractionBottomTypeStart = ifelse(InteractionBottomTypeStart == "", InteractionBottomTypeStart.start, InteractionBottomTypeStart),
+    InteractionHabitatStart = ifelse(InteractionHabitatStart == "", InteractionHabitatStart.start, InteractionHabitatStart),
+    InteractionDepthStart = ifelse(InteractionDepthStart == "", InteractionDepthStart.start, InteractionDepthStart)) %>%
+  select(-ends_with(".start"))
+
+interaction_rows_updated <- bind_rows(
+  interaction_rows %>% filter(Behavior.type != "STOP"),
+  stops_filled) %>%
+  arrange(ObservID, DT)
+
+interactions.data6 <- interactions.data5 %>%
+  filter(!(Behavior == "Species Interaction" & Subject == "")) %>%
+  bind_rows(interaction_rows_updated) %>%
+  arrange(DeployID, DT) %>%
+  select(-InteractionTimeStamps, -InteractionGroupID)
+
+interactions.data6
+```
+
+```{r}
+#Copy info from stop to start interaction rows so it will show up when data is transformed from long to wide format
+interaction_rows1 <- interactions.data6 %>%
+  filter(Behavior == "Species Interaction", Subject == "") %>%
+  arrange(ObservID, DT)
+
+interaction_rows1 <- interaction_rows1 %>%
+  mutate(InteractionGroupID = cumsum(Behavior.type == "START"))
+
+stops1 <- interaction_rows1 %>%
+  filter(Behavior.type == "STOP") %>%
+  select(
+    ObservID, InteractionGroupID,
+    NextBehavior, InteractionBottomTypeEnd,
+    InteractionHabitatEnd, InteractionDepthEnd)
+
+starts1 <- interaction_rows1 %>%
+  filter(Behavior.type == "START")
+
+starts_filled <- starts1 %>%
+  left_join(stops1, by = c("ObservID", "InteractionGroupID"), suffix = c("", ".stop")) %>%
+  mutate(
+    NextBehavior = ifelse(NextBehavior == "", NextBehavior.stop, NextBehavior),
+    InteractionBottomTypeEnd = ifelse(InteractionBottomTypeEnd == "", InteractionBottomTypeEnd.stop, InteractionBottomTypeEnd),
+    InteractionHabitatEnd = ifelse(InteractionHabitatEnd == "", InteractionHabitatEnd.stop, InteractionHabitatEnd),
+    InteractionDepthEnd = ifelse(InteractionDepthEnd == "", InteractionDepthEnd.stop, InteractionDepthEnd)) %>%
+  select(-ends_with(".stop"))
+
+interaction_rows_updated1 <- bind_rows(
+  interaction_rows1 %>% filter(Behavior.type != "START"),
+  starts_filled) %>%
+  arrange(ObservID, DT)
+
+interactions.data7 <- interactions.data6 %>%
+  filter(!(Behavior == "Species Interaction" & Subject == "")) %>%
+  bind_rows(interaction_rows_updated1) %>%
+  arrange(DeployID, DT) %>%
+  select(-InteractionGroupID)
+
+interactions.data7
+```
+
+```{r}
+#Creating a column for interaction type
+interaction.type <- interactions.data7 %>%
+  mutate(InteractionType = case_when(
+    #Type 3: Aggressive interaction. Any aggressive behavior is present
+    str_detect(InteractiveBehaviorsSubject, "Biting|Chasing|Aggressive physical contact|Flee") ~ "Aggressive",
+    
+    #Type 2: Active interaction. Must include at least one of the type 2 behaviors AND only allowed type 1 + 2 behaviors
+    str_detect(InteractiveBehaviorsSubject, "Group resting or cleaning|Follow|Non aggressive physical contact|Displacement|Blocking") &
+      !str_detect(InteractiveBehaviorsSubject, "Biting|Chasing|Aggressive physical contact|Flee") ~ "Active",
+    
+    #Type 1: Passive interaction. Only type 1 behaviors and none of the rest
+    str_detect(InteractiveBehaviorsSubject, "^(Approach|Inspect|None)(,\\s*(Approach|Inspect|None))*$") ~ "Passive", TRUE ~ ""))
+
+interaction.type
+```
+
+```{r}
+#Correcting for frame rate 
+library(dplyr)
+
+corrected.data <- interaction.type %>%
+  group_by(ObservID) %>%
+  # Ensure DT and start/end times are POSIXct
+  mutate(
+    DT = as.POSIXct(DT),
+    ObsStartTime = min(ObsStartTime, na.rm = TRUE),
+    ObsEndTime = max(ObsEndTime, na.rm = TRUE),
+    actual_duration = as.numeric(ObsEndTime - ObsStartTime, units = "secs"),
+    video_duration = as.numeric(max(DT, na.rm = TRUE) - min(DT, na.rm = TRUE), units = "secs"),
+    correction = actual_duration / video_duration,
+    DT_offset = as.numeric(DT - min(DT, na.rm = TRUE), units = "secs"),
+    CorrectedTime = ObsStartTime + (DT_offset * correction)) %>%
+  relocate(CorrectedTime, .after = DT) %>%
+  ungroup() 
+
+corrected.data
+```
+
+```{r}
+data.ids <- corrected.data %>%
+  mutate(DeployID_num = as.numeric(str_extract(DeployID, "(?<=_)\\d+$"))) %>%
+  arrange(DeployID_num, CorrectedTime, Subject) %>%
+  mutate(
+    DeployNum = dense_rank(DeployID),
+    BehavID = as.integer(factor(Behavior)),
+    Segment = NA_integer_) %>%
+  select(-DeployID_num) %>%
+  group_by(DeployNum, BehavID, Subject) %>%
+  mutate(
+    Segment = if_else(
+      Behavior.type %in% c("START", "STOP"),
+      cumsum(Behavior.type == "START"),
+      Segment)) %>%
+  ungroup() %>%
+  group_by(DeployNum, BehavID, Subject) %>%
+  mutate(
+    Segment = if_else(
+      Behavior.type == "POINT",
+      dense_rank(CorrectedTime),
+      Segment)) %>%
+  ungroup()
+
+data.ids
+```
+
+```{r}
+# making CATS turtle info available in all rows
+data.ids1 <- data.ids %>% #changing subject from blank to CATS turtle for all behaviors
+  mutate(Subject = ifelse(Subject == "", "CATS Turtle", Subject), Subject = trimws(Subject)) 
+  
+speciessubject <- data.ids1 %>% #finding species of CATS turtle to put in all rows
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle", !is.na(SpeciesSubject), SpeciesSubject != "") %>%
+  distinct(ObservID, SpeciesSubject)
+
+lifestagesubject <- data.ids1 %>% #finding life stage of CATS turtle to put in all rows
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle", !is.na(LifeStageSubject), LifeStageSubject != "") %>%
+  distinct(ObservID, LifeStageSubject)
+
+sexsubject <- data.ids1 %>% #finding sex of CATS turtle to put in all rows
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle", !is.na(SexSubject), SexSubject != "") %>%
+  distinct(ObservID, SexSubject)
+
+bodysubject <- data.ids1 %>% #finding body condition of CATS turtle to put in all rows
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle", !is.na(BodyConditionSubject), BodyConditionSubject != "") %>%
+  distinct(ObservID, BodyConditionSubject)
+
+diseaseinjury <- data.ids1 %>% #finding signs of disease or injury of CATS turtle to put in all rows
+  filter(Behavior == "Species Interaction", Subject == "CATS Turtle", !is.na(SignsDiseaseInjurySubject), SignsDiseaseInjurySubject != "") %>%
+  distinct(ObservID, SignsDiseaseInjurySubject)
+
+data.ids1 <- data.ids1 %>% #copying species and life stage of CATS turtle into all rows
+  left_join(speciessubject, by = "ObservID", suffix = c("", ".filled")) %>%
+  mutate(SpeciesSubject = case_when(Subject == "CATS Turtle" & (is.na(SpeciesSubject) | SpeciesSubject == "") ~ 
+                                      SpeciesSubject.filled, TRUE ~ SpeciesSubject)) %>%
+  left_join(lifestagesubject, by = "ObservID", suffix = c("", ".filled")) %>%
+  mutate(LifeStageSubject = case_when(Subject == "CATS Turtle" & (is.na(LifeStageSubject) | LifeStageSubject == "") ~ 
+                                      LifeStageSubject.filled, TRUE ~ LifeStageSubject)) %>%
+  left_join(sexsubject, by = "ObservID", suffix = c("", ".filled")) %>%
+  mutate(SexSubject = case_when(Subject == "CATS Turtle" & (is.na(SexSubject) | SexSubject == "") ~ 
+                                      SexSubject.filled, TRUE ~ SexSubject)) %>%
+  left_join(bodysubject, by = "ObservID", suffix = c("", ".filled")) %>%
+  mutate(BodyConditionSubject = case_when(Subject == "CATS Turtle" & (is.na(BodyConditionSubject) | BodyConditionSubject == "") ~ 
+                                      BodyConditionSubject.filled, TRUE ~ BodyConditionSubject)) %>%
+  left_join(diseaseinjury, by = "ObservID", suffix = c("", ".filled")) %>%  
+  mutate(SignsDiseaseInjurySubject = case_when(Subject == "CATS Turtle" & (is.na(SignsDiseaseInjurySubject) | SignsDiseaseInjurySubject == "") ~ 
+                                      SignsDiseaseInjurySubject.filled, TRUE ~ SignsDiseaseInjurySubject)) %>%
+  select(-SpeciesSubject.filled, -LifeStageSubject.filled, -SexSubject.filled, -BodyConditionSubject.filled, -SignsDiseaseInjurySubject.filled) %>%
+  relocate(SpeciesSubject, LifeStageSubject, SexSubject, BodyConditionSubject, SignsDiseaseInjurySubject, .after = Subject) 
+
+data.ids1
+```
+
+```{r}
+# change from long to wide format
+starts <- data.ids1 %>%
+  filter(Behavior.type == "START") %>%
+  group_by(DeployNum, BehavID, Segment, Subject, CorrectedTime) %>%
+  mutate(pair_id = row_number()) %>%
+  ungroup() %>%
+  rename(BehStartTime = CorrectedTime)
+
+stops <- data.ids1 %>%
+  filter(Behavior.type == "STOP") %>%
+  group_by(DeployNum, BehavID, Segment, Subject, CorrectedTime) %>%
+  mutate(pair_id = row_number()) %>%
+  ungroup() %>%
+  rename(BehStopTime = CorrectedTime)
+
+interactions.wide <- left_join(
+  starts, stops, by = c("DeployNum", "BehavID", "Segment", "Subject", "pair_id"), suffix = c(".start", ".stop")) %>%
+  mutate(
+    BehDuration = as.numeric(BehStopTime - BehStartTime, units = "secs")) %>%
+  select(-ends_with(".stop")) %>%
+  rename_with(~ gsub("\\.start$", "", .), ends_with(".start")) %>%
+  relocate(BehStartTime, .after = 2) %>%
+  relocate(BehStopTime, BehDuration, .after = "BehStartTime") %>%
+  select(-DT, -Observation.duration, -Media.duration..s., -actual_duration, -video_duration, -correction, -DT_offset, -FPS) %>%
+  mutate(DeployID_num = as.numeric(str_extract(DeployID, "(?<=_)\\d+$"))) %>%
+  arrange(DeployID_num, BehStartTime) %>%
+  select(-DeployID_num) %>%
+  mutate( #rounding to nearest second, not millisecond
+    BehStartTime = lubridate::floor_date(BehStartTime, unit = "1 sec"),
+    BehStopTime = lubridate::ceiling_date(BehStopTime, unit = "1 sec"))
+
+interactions.wide
+```
+
+```{r}
+#to check that nothing has been accidentally filtered out
+ids <- interactions.wide %>%
+  select(DeployID) %>%
+  distinct()
+ids
+
+n_distinct(interactions.wide$DeployID) #check that this number matches the number of deployments expected
+#for 2023-2026 data should be 41 total deployments included (for interactios project)
+```
+
+```{r}
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "clean.behavior.data.2023.to.2026.csv")
+write.csv(interactions.wide, output_file, row.names = FALSE)
+```
+
+Start movement data
+
+```{r}
+all.movement.data <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/seaturtelemetry/Data/Processed Data/Deployment Diaries/Final/allsensdata_new.csv") 
+```
+
+```{r}
+all.movement.data <- all.movement.data %>%
+  mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y')) %>%
+  mutate(DT= as.POSIXct(all.movement.data$DT, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  filter(!is.na(DT)) #filter out rows from midnight timestamp, which have NA for time 
+```
+
+```{r}
+# may not need this other dive data, so skip chunk for now
+dives <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/seaturtelemetry/Data/Processed Data/Dive data/adjusteddives_new.csv") %>%
+  mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y')) 
+
+dives.sum <- dives %>%
+  group_by(DeployID) %>%
+  summarise(divetim = mean(divetim))
+
+#select timing information
+
+divedata <- dives %>%
+  select(DeployID:begasc, endasc:enddive) 
+
+#timing to denote descent phases
+
+desc <- divedata %>%
+  select(1:4) %>%
+  mutate(Phase1 = "Descent")
+
+#timing to denote bottom phases
+
+bott <- divedata %>%
+  select(1:2, 4:5) %>%
+  mutate(Phase2 = "Bottom")
+
+#timing to denote ascent phases
+
+asc <- divedata %>%
+  select(1:2, 5:6) %>%
+  mutate(Phase3 = "Ascent")
+
+#timing to denote post-dive surface phases
+
+pdsi <- divedata %>%
+  select(1:2, 6:7) %>%
+  mutate(Phase4 = "Surface")
+  
+divedata2 <- divedata %>%
+  group_by(DeployID) %>% 
+  mutate(DiveNum = row_number()) %>%
+  ungroup() %>%
+  gather(key = "beg_end", value = "time", begdesc:enddive)
+
+dive.beg <- divedata2 %>% 
+  filter(beg_end == "begdesc") %>% 
+  rename(beg = beg_end) %>% 
+  mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y'))
+
+dive.end <- divedata2 %>% 
+  filter(beg_end == "enddive") %>% 
+  rename(end = beg_end, DiveNum2 = DiveNum) %>%
+  mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y'))
+```
+
+```{r}
+dive.phases <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/Analysis/seaturtelemetry/Data/Processed Data/Dive Data/divephases_new.csv")
+
+dphases <- dive.phases %>%
+  mutate(DeployDate = as.Date(DeployDate, format = '%m-%d-%Y')) %>%
+  rename(DT = time) %>%
+  mutate(DT = as.POSIXct(DT, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  filter(!is.na(DT)) #filter out rows from midnight timestamp, which have NA for time 
+```
+
+```{r}
+final.movement.data <- all.movement.data %>%
+  left_join(dphases) 
+
+final.movement.data
+```
+
+```{r}
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "final.movement.data.csv")
+write.csv(final.movement.data, output_file, row.names = FALSE)
+```
+
+
+Combining behavior and movement data
+
+```{r}
+clean.behavior.data <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/clean.behavior.data.2023.to.2026.csv")
+
+final.movement.data <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/final.movement.data.csv")
+```
+
+
+```{r}
+library(data.table)  
+# merging dfs 
+movement <- copy(as.data.table(final.movement.data))
+behavior <- copy(as.data.table(clean.behavior.data))
+
+#Fixing messed up date for CC-11-11_CR19
+movement[DeployID == "CC-11-11_CR19" & DeployDate == as.IDate("2025-11-04"), 
+         DeployDate := as.IDate("2025-04-11")]
+
+# Create interval columns: DT is a point, so treat it as a 0-width interval
+movement[, `:=`(start = DT, end = DT)]
+
+#convert start and end to numeric (will be read in from csv as character columns)
+movement[, `:=`(
+  start = as.numeric(as.POSIXct(start, tz = "UTC")),
+  end = as.numeric(as.POSIXct(end, tz = "UTC")))]
+
+# Make sure behavior intervals are named consistently
+setnames(behavior, c("BehStartTime", "BehStopTime"), c("start", "end"))
+
+behavior[, `:=`(
+  start = as.numeric(as.POSIXct(start, tz = "UTC")),
+  end = as.numeric(as.POSIXct(end, tz = "UTC")))]
+
+# Set keys for foverlaps
+setkey(behavior, DeployID, start, end)
+
+# Run the overlap join
+all.data <- foverlaps(movement, behavior,
+  by.x = c("DeployID", "start", "end"),
+  by.y = c("DeployID", "start", "end"),
+  type = "within",
+  nomatch = 0)
+
+#all.data[, c("start", "end") := NULL] #removing strat/end columns
+setnames(all.data, c("start", "end"), c("BehStartTime", "BehStopTime")) #bringing back start/end columns
+
+# Rename DT to Time
+setnames(all.data, "DT", "Time")
+
+#converting all timestamp columns back to POSIXct
+all.data[, `:=`(
+  BehStartTime = as.POSIXct(BehStartTime, tz = "UTC"),
+  BehStopTime = as.POSIXct(BehStopTime, tz = "UTC"),
+  Time = as.POSIXct(Time, tz = "UTC"),
+  ObsStartTime = as.POSIXct(ObsStartTime, tz = "UTC"),
+  ObsEndTime = as.POSIXct(ObsEndTime, tz = "UTC"))]
+
+#separating df into cats and observed turtles so that OTs aren't erased when i do the below duplucate/overlap cleanup
+cats <- all.data[Subject == "CATS Turtle"]
+others <- all.data[Subject != "CATS Turtle"]
+
+#setting rules to eliminate overlap + duplication error due to rounding behavior data to match sensor data
+cats <- cats[BehStartTime <= Time & Time < BehStopTime]
+setorder(cats, DeployID, Time, -BehStartTime)
+cats <- cats[, .SD[1], by = .(DeployID, Time)]
+all.data <- rbindlist(list(cats, others), use.names = TRUE) #recombine data
+
+combined.data <- all.data %>%
+  relocate(DeployNum, DeployDate, ReleaseTime, .after = DeployID) %>%
+  relocate(Time, .after = ObsEndTime) %>%
+  relocate(BehavID, Segment, BehavCat, BehDuration, .after = Behavior) %>%
+  relocate(BehDuration, .after = BehavCat) %>%
+  relocate(33:57, .after = BehDuration) %>%
+  relocate(Source, .after = last_col()) %>%
+  select(-i.start, -i.end)
+
+combined.data
+```
+
+```{r}
+#to check that nothing has been accidentally filtered out
+ids <- combined.data %>%
+  select(DeployID) %>%
+  distinct()
+ids
+
+n_distinct(combined.data$DeployID) #check that this number matches the number of deployments expected
+#for 2023-2026 data should be 41 total deployments included (for interactions project)
+```
+
+```{r}
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "combined.behavior.and.movement.data.csv")
+write.csv(combined.data, output_file, row.names = FALSE)
+```
+
+```{r}
+#if picking up from here read in csv
+#combined.data <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/combined.behavior.and.movement.data.csv")
+#Grouping behaviors that should be group based off IRR, etc (e.g., active and passive swim)
+grouped.data <- combined.data %>%
+  mutate(Behavior = ifelse(Behavior == "Active Swim" | Behavior == "Passive Swim" | Behavior == "Vigilance",  
+                           "Swimming", Behavior),
+         Behavior = ifelse(Behavior == "Searching" | Behavior == "Forage", 
+                           "Foraging", Behavior),
+        Behavior = ifelse(Behavior == "Rest", 
+                           "Resting", Behavior)) 
+
+grouped.data <- grouped.data %>%
+  mutate(across(where(is.character), ~replace_na(., "")))
+
+grouped.data
+```
+
+```{r}
+#Trim off first 3 hours of each deployment for capture and handling stress
+data.nostress <- grouped.data %>%
+  mutate(Time = as.POSIXct(grouped.data$Time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  mutate(ReleaseTime = as.POSIXct(grouped.data$ReleaseTime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>%
+  filter(Time > ReleaseTime + lubridate::hours(3) + lubridate::seconds(1)) %>%
+  filter(DeployID != "CC-11-12_CR1") #remove 4-hour deployment
+
+data.nostress  
+```
+
+```{r}
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "data.trimmed.csv")
+write.csv(data.nostress, output_file, row.names = FALSE)
+
+#CSV without 1st 3 hours of each deployment. This is also grouped data; some behaviors grouped, like active and passive swim
+```
+
+```{r}
+#FOR FILTERED AND TRIMMED DATA:
+#Assign numbers to DeployID, create numbers for Behavior IDs, numbers for each segment of each behavior (then can calculate mean DBA for each segment, for ex)
+#data.trimmed <- read.csv("/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)/data.trimmed.csv")
+
+#Add mean DBA as a column; this is the mean DBA for that behavior event (e.g., that instance of breathing or that interaction)
+data.ids.DBA <- data.nostress %>%
+  group_by(DeployNum, BehavID, Segment) %>%
+  mutate(MeanDBA = mean(DBA, na.rm = TRUE)) %>%
+  ungroup()
+
+#Add avg DBA column; this is DBA as a function of time for that behavior event (e.g., all DBA measurements for a breathing event added up and divided by total time of that breathing event)
+data.ids.meanDBA <- data.ids.DBA %>%
+  filter(Subject == "CATS Turtle") %>%
+  group_by(DeployNum, BehavID, Segment) %>%
+  mutate(SumDBA = sum(DBA, na.rm = TRUE), BehDuration = dplyr::first(BehDuration), AvgDBA = SumDBA / BehDuration) %>%
+  ungroup() %>%
+  filter(DeployID != "CC-11-145_CR1") #cut out the aug 2025 kemps
+data.ids.meanDBA
+
+output_directory <- "/Users/sophierosengarten/Documents/Master's/Interactions Project/DATA (copies)"
+
+output_file <- file.path(output_directory, "full.CATS.data.csv")
+write.csv(data.ids.meanDBA, output_file, row.names = FALSE)
+```
+
