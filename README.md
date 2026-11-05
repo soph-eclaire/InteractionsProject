@@ -1,30 +1,30 @@
 **Data and script for Stalking the Social Lives of Sea Turtles: the prevalence, duration, and activity of interactions between three sympatric sea turtle species**
 
 Scripts for data cleaning, processing, and analysis can be found on GitHub at https://github.com/soph-eclaire/InteractionsProject
-Data cleaning and processing was completed using InteractionsDataCleaningProcessing_Final.Rmd
-Data analysis was completed using Interactions_Analysis.Rmd
+Data cleaning and processing was completed using _InteractionsDataCleaningProcessing_Final.Rmd_
+Data analysis was completed using _Interactions_Analysis.Rmd_
 
 Data was collected via animal-borne CATS camera tags to opportunistically observe and analyze behavioral interactions between three sympatric sea turtle species in a critical foraging habitat off the Gulf coast of Florida, USA. The data was broken into two sets: (1) behavioral annotations taken from video footage; and (2) movement data collected via several sensors embedded within the tags [most importantly to this analysis, dynamic body acceleration (DBA) computed from a tri-axial accelerometer].
 
 
 **Working through the script**
 
-merged_interactions_annotations.csv is the complete raw dataset of video annotations, completed in behavioral analysis software Boris. The beginning of the data cleaning/processing script focuses on cleaning up this data, including applying actual date/times to behaviors (as opposed to time in "seconds into the video"), appropriately labelling modifiers (additional information collected for a behavior within Boris), differentiating interaction behavior events by interaction type, correcting for time discrepencies (frame rate differences, time change for EST vs EDT), and transforming data from long to wide format. The final cleaned product is clean.behavior.data.2023.to.2026.csv.
+_merged_interactions_annotations.csv_ is the complete raw dataset of video annotations, completed in behavioral analysis software Boris. The beginning of the data cleaning/processing script focuses on cleaning up this data, including applying actual date/times to behaviors (as opposed to time in "seconds into the video"), appropriately labelling modifiers (additional information collected for a behavior within Boris), differentiating interaction behavior events by interaction type, correcting for time discrepencies (frame rate differences, time change for EST vs EDT), and transforming data from long to wide format. The final cleaned product is _clean.behavior.data.2023.to.2026.csv_.
 
-The movement data is then introduced (allsensdata_new.csv, divephases_new.csv, adjusteddives_new.csv) to be merged in and aligned with the behavior data by date/time. First, these three files are merged together to create final.movement.data.csv. This csv is then merged with clean.behavior.data.2023.to.2026.csv to create the final product combined.behavior.and.movement.data.csv. This is the full dataset of behavior and movement data for the turtles included in this study, only including data from the windows of time where there is both video annotation and sensor data to analyze (e.g., overnight sensor data where there was no accompanying video footage due to light constraints is filtered out at this point).
+The movement data is then introduced (_allsensdata_new.csv, divephases_new.csv, adjusteddives_new.csv_) to be merged in and aligned with the behavior data by date/time. First, these three files are merged together to create final.movement.data.csv. This csv is then merged with _clean.behavior.data.2023.to.2026.csv_ to create the final product _combined.behavior.and.movement.data.csv_. This is the full dataset of behavior and movement data for the turtles included in this study, only including data from the windows of time where there is both video annotation and sensor data to analyze (e.g., overnight sensor data where there was no accompanying video footage due to light constraints is filtered out at this point).
 
-From here, prior to completing any analysis, some behaviors are merged together (searching and foraging; types of swimming) and the first three hours of data collected post-release for each individual is filtered out to account for any residual stress related to capture/handling. This becomes the final product data.trimmed.csv.
+From here, prior to completing any analysis, some behaviors are merged together (searching and foraging; types of swimming) and the first three hours of data collected post-release for each individual is filtered out to account for any residual stress related to capture/handling. This becomes the final product _data.trimmed.csv_.
 
-Mean DBA is then computed for each occurrence of a behavior for each individual to prepare data for DBA analysis. This produces the final, cleaned dataset full.CATS.data.csv, ready to be used in the analysis script.
+Mean DBA is then computed for each occurrence of a behavior for each individual to prepare data for DBA analysis. This produces the final, cleaned dataset _full.CATS.data.csv_, ready to be used in the analysis script.
 
-The Interactions_Analysis.Rmd script is broken down by individual analysis, working through time budgets, interaction counts, interaction duration, and DBA one by one, including any further data wrangling, analyses, and plotting/figure creation.
+The _Interactions_Analysis.Rmd_ script is broken down by individual analysis, working through time budgets, interaction counts, interaction duration, and DBA one by one, including any further data wrangling, analyses, and plotting/figure creation.
 
 
 **Files and Variables**
 
 **merged_interactions_annotations.csv**
-Description: complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
-Variables:
+_Description: _complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
+_Variables:_
 *Note: "NA" indicated an unused variable (columns produced by Boris but not filled with any data when using the annotation software )
 - Observation.id - Observation ID, including deployment number and number of particular video (e.g., CC-11-11_CR12_4 indicated camera CC-11-11, deployment 12, video 4)
 - Observation.date - Date and time observation was completed in Boris - not the date/time of the actual footage
@@ -47,8 +47,8 @@ Variables:
 - Time.offset..s. - NA
   
 **clean.behavior.data.2023.to.2026.csv**
-Description: cleaned behavior data, ready to merge with movement/sensor data.
-Variables:
+_Description:_ cleaned behavior data, ready to merge with movement/sensor data.
+_Variables:_
 - DeployID - Deployment number 
 - ObservID - Observation number (deployment number_video number from that deployment)
 - BehStartTime - Start time of the behavior (mm/dd/yy hh:mm:ss)
