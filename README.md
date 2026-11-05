@@ -33,10 +33,9 @@ The _Interactions_Analysis.Rmd_ script is broken down by individual analysis, wo
 _Description:_ complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
 
 _Variables:_
-*Note: "NA" indicated an unused variable (columns produced by Boris but not filled with any data when using the annotation software )
+*Note: only the variables/data used in the analysis for this project are listed below. 
 - Observation.id - Observation ID, including deployment number and number of particular video (e.g., CC-11-11_CR12_4 indicated camera CC-11-11, deployment 12, video 4)
 - Observation.date - Date and time observation was completed in Boris - not the date/time of the actual footage
-- Description - NA
 - Observation.duration - Length (s) of video annotated
 - Observation.type - Media file, indicating a media file was uploaded to Boris for annotation
 - Source - Filepath of video annotated
@@ -48,11 +47,8 @@ _Variables:_
 - Behavior.type - Point or start/stop; point events are one point in time (e.g., marking the time to note the actual time of day in hh:mm:ss taken from the clock in the bottom right corner of the video), start/stop events have a duration, and thus a start/stop.
 - Time - Time into video (s) behavior was marked; later transformed into a date/time using actual release data and the time noted in Modifier..1 column for "Time" behavior (hh:mm:ss)
 - Media.file.name - Filepath of video annotated
-- Image.index - Frame number (not used)
-- Image.file.path - NA
 - Comment - Any additional comments aded for the behavior annotation
-- Modifier..1 through Modifier..10
-- Time.offset..s. - NA
+- Modifier..1 through Modifier..10 - Additional data collected for a behavior. Modifiers 1-5 may be different depending on the behavior; for example, for foraging behavior, Modifier 1 may indicate the foraging location (benthic, pelagic, or surface), while for species interactions, it is the species of the other turtle the subject turtle is interacting with. Modifiers are split up by behavior and transformed throughout the beginning of the cleaning/processing script to include actual labels (e.g., interactive behaviors)
   
 **clean.behavior.data.2023.to.2026.csv**
 
@@ -95,7 +91,15 @@ _Variables:_
 - Segment - Number of the occurrence of a behavior for an individual (e.g., first swimming event for deployment number 1 is "1", second swimming event for deployment 1 is "2")
 - pair_id - Used to transform data from long to wide format
 
+**allsensdata_new.csv**
 
+_Description:_ Sensor data was processed using the processing script from https://doi.org/10.1186/s40317-025-00406-4, found at 
 
+_Variables:_
+*Note: only the variables/data used in the analysis for this project are listed below
+- DeployID - Deployment number
+- DT - The date/time (mm/dd/yy hh:mm:ss), used to align this data with the behavior dataset
+- DBA - Dynamic body acceleration value, recorded via tri-axial accelerometer (and computed in the processing script); one row for every 2 s
+- 
 
 
