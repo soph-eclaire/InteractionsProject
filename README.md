@@ -1,4 +1,4 @@
-Data and script for Stalking the Social Lives of Sea Turtles: the prevalence, duration, and activity of interactions between three sympatric sea turtle species 
+**Data and script for Stalking the Social Lives of Sea Turtles: the prevalence, duration, and activity of interactions between three sympatric sea turtle species**
 
 Scripts for data cleaning, processing, and analysis can be found on GitHub at https://github.com/soph-eclaire/InteractionsProject
 Data cleaning and processing was completed using InteractionsDataCleaningProcessing_Final.Rmd
@@ -7,7 +7,7 @@ Data analysis was completed using Interactions_Analysis.Rmd
 Data was collected via animal-borne CATS camera tags to opportunistically observe and analyze behavioral interactions between three sympatric sea turtle species in a critical foraging habitat off the Gulf coast of Florida, USA. The data was broken into two sets: (1) behavioral annotations taken from video footage; and (2) movement data collected via several sensors embedded within the tags [most importantly to this analysis, dynamic body acceleration (DBA) computed from a tri-axial accelerometer].
 
 
-Working through the script
+**Working through the script**
 
 merged_interactions_annotations.csv is the complete raw dataset of video annotations, completed in behavioral analysis software Boris. The beginning of the data cleaning/processing script focuses on cleaning up this data, including applying actual date/times to behaviors (as opposed to time in "seconds into the video"), appropriately labelling modifiers (additional information collected for a behavior within Boris), differentiating interaction behavior events by interaction type, correcting for time discrepencies (frame rate differences, time change for EST vs EDT), and transforming data from long to wide format. The final cleaned product is clean.behavior.data.2023.to.2026.csv.
 
@@ -20,9 +20,9 @@ Mean DBA is then computed for each occurrence of a behavior for each individual 
 The Interactions_Analysis.Rmd script is broken down by individual analysis, working through time budgets, interaction counts, interaction duration, and DBA one by one, including any further data wrangling, analyses, and plotting/figure creation.
 
 
-Files and Variables
+**Files and Variables**
 
-merged_interactions_annotations.csv
+**merged_interactions_annotations.csv**
 Description: complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
 Variables:
 *Note: "NA" indicated an unused variable (columns produced by Boris but not filled with any data when using the annotation software )
@@ -45,6 +45,45 @@ Variables:
 - Comment - Any additional comments aded for the behavior annotation
 - Modifier..1 through Modifier..10
 - Time.offset..s. - NA
+  
+**clean.behavior.data.2023.to.2026.csv**
+Description: cleaned behavior data, ready to merge with movement/sensor data.
+Variables:
+- DeployID - Deployment number 
+- ObservID - Observation number (deployment number_video number from that deployment)
+- BehStartTime - Start time of the behavior (mm/dd/yy hh:mm:ss)
+- BehStopTime - Stop time of the behavior (mm/dd/yy hh:mm:ss)
+- BehDuration _ Durtaion (s) of the behavior
+- ObsStartTime - Start time (mm/dd/yy hh:mm:ss) of the individual video
+- ObsEndTime - End time (mm/dd/yy hh:mm:ss) of the individual video
+- Subject - Subject behavior was annotated for; mostly CATS turtle, except for interactions, where behavior was also annotated for observed turtle(s)
+- SpeciesSubject - Sea turtle species of the given subject (Loggerhead, Green, or Kemp's ridley)
+- LifeStageSubject - Estimated lifestage of the given subject (juvenile, subadult, or adult; taken from morphometric capture data, or for observed turtles, estimated)
+- SexSubject - Sex of the given subject (male, female, or unknown; taken from morphometric capture data, or for observed turtles, estimated)
+- BodyConditionSubject - Estimated body condition of the given subject (poor, good, or robust; taken from morphometric capture data, or for observed turtles, estimated)
+- SignsDiseaseInjurySubject - Any notable signs of disease/injury for the given subject (e.g., fibropapillomatosis, flipper or carapace injury; marked as either yes, no, or unclear)
+- ReleaseTime - Time (mm/dd/yy hh:mm:ss) tagged turtle was released
+- Behavior - Behavior (swimming, fraging, resting, etc)
+- BehavCat - Some behaviors share a category (e.g., active and passive swim are both "swim"). For some behaviors, the category is the same as the behavior (e.g., rest)
+- InteractiveBehaviorsSubject - For species interaction behavior, the interactive behaviors exhibited (e.g., approach, inspect, biting, chasing)
+- PreviousBehavior - Behavior turtle was engaging in prior to an interaction
+- NextBehavior - Next behavior the turtle engages in after an interaction
+- SpeciesInteractingWith - Species the subject is interacting with (loggerhead, green, or Kemp's ridley; if the tagged turtle was a loggerhead and observed turtle a green, when subject is CATS turtle, this will be green; when subject is Observed turtle (n) this will be loggerhead)
+- InteractionWinner - If an aggressive interaction has a clear winner (e.g., one turtle "wins" a contest resource, chasing th eother out), the appropriate subject is indicated here (though this was not used in final analyses)
+- AggressionInitiator - For an aggressive interaction, which subject initiated the aggression
+- InteractionBottomTypeStart - Habitat bottom type (seagrass, hard bottom, sandy bottom, or mixed) at the start of an interaction
+- InteractionBottomTypeEnd - Habitat bottom type (seagrass, hard bottom, sandy bottom, or mixed) at the end of an interaction
+- InteractionHabitatStart - Habitat (structured or unstructured) at the start of an interaction
+- InteractionHabitatEnd - Habitat (structured or unstructured) at the end of an interaction
+- InteractionDepthStart - Depth (bottom, midwater, or surface) at the start of an interaction
+- InteractionDepthEnd - Depth (bottom, midwater, or surface) at the end of an interaction
+- Behavior.type - Point or start/stop; point events are one point in time (e.g., marking the time to note the actual time of day in hh:mm:ss taken from the clock in the bottom right corner of the video), start/stop events have a duration, and thus a start/stop.
+- Source - Filepath of video annotated
+- InteractionType - For species interactions, the type of interaction (passive, active, or aggressive), determined based on interactive behaviors exhibited by the focal (CATS) turtle
+- DeployNum - Unique deployment number, one for each deployment
+- BehavID - Numbers assigned to each behavior (e.g., swimming is 1, breathing is 2)
+- Segment - Number of the occurrence of a behavior for an individual (e.g., first swimming event for deployment number 1 is "1", second swimming event for deployment 1 is "2")
+- pair_id - Used to transform data from long to wide format
 
 
 
