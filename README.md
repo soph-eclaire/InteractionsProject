@@ -3,6 +3,7 @@
 Scripts for data cleaning, processing, and analysis can be found on GitHub at https://github.com/soph-eclaire/InteractionsProject
 
 Data cleaning and processing was completed using _InteractionsDataCleaningProcessing_Final.Rmd_
+
 Data analysis was completed using _Interactions_Analysis.Rmd_
 
 Data was collected via animal-borne CATS camera tags to opportunistically observe and analyze behavioral interactions between three sympatric sea turtle species in a critical foraging habitat off the Gulf coast of Florida, USA. The data was broken into two sets: (1) behavioral annotations taken from video footage; and (2) movement data collected via several sensors embedded within the tags [most importantly to this analysis, dynamic body acceleration (DBA) computed from a tri-axial accelerometer].
