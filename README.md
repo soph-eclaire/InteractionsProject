@@ -93,13 +93,12 @@ _Variables:_
 
 **allsensdata_new.csv**
 
-_Description:_ Sensor data was processed using the processing script from https://doi.org/10.1186/s40317-025-00406-4, found at 
+_Description:_ Sensor data was processed using the processing script from https://doi.org/10.1186/s40317-025-00406-4, found at https://zenodo.org/records/20147018
 
 _Variables:_
 *Note: only the variables/data used in the analysis for this project are listed below
 - DeployID - Deployment number
 - DT - The date/time (mm/dd/yy hh:mm:ss), used to align this data with the behavior dataset
 - DBA - Dynamic body acceleration value, recorded via tri-axial accelerometer (and computed in the processing script); one row for every 2 s
-- 
 
 
