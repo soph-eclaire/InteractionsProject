@@ -93,7 +93,7 @@ _Variables:_
 
 **allsensdata_new.csv**
 
-_Description:_ Sensor data was processed using the processing script from https://doi.org/10.1186/s40317-025-00406-4, found at https://zenodo.org/records/20147018
+_Description:_ Sensor data was loaded into the script as allsensdata_new.csv, which was already processed using the processing script from https://doi.org/10.1186/s40317-025-00406-4, found at https://zenodo.org/records/20147018 . From here, it was merged in/aligned with the behavior data using the below variables.
 
 _Variables:_
 *Note: only the variables/data used in the analysis for this project are listed below
