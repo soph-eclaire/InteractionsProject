@@ -12,8 +12,10 @@ Data was collected via animal-borne CATS camera tags to opportunistically observ
 **Working through the script**
 
 _merged_interactions_annotations.csv_ is the complete raw dataset of video annotations, completed in behavioral analysis software Boris. The beginning of the data cleaning/processing script focuses on cleaning up this data, including applying actual date/times to behaviors (as opposed to time in "seconds into the video"), appropriately labelling modifiers (additional information collected for a behavior within Boris), differentiating interaction behavior events by interaction type, correcting for time discrepencies (frame rate differences, time change for EST vs EDT), and transforming data from long to wide format. 
+
 For videos where a turtle's release was caught on camera, release time (taken from the clock in the bottom right corner of the video) was noted in the Boris annotations as "release time" behavior; however, this was not possible for some deployments where the camera did not record the exact release. As such, a release time was taken from our capture database and added to the dataset via _MissingReleaseTimes.csv_ during data cleaning/processing. 
-The final cleaned product is _clean.behavior.data.2023.to.2026.csv_.
+
+The final cleaned product for the behavior data is _clean.behavior.data.2023.to.2026.csv_.
 
 The movement data is then introduced (_allsensdata_new.csv, divephases_new.csv, adjusteddives_new.csv_) to be merged in and aligned with the behavior data by date/time. First, these three files are merged together to create final.movement.data.csv. This csv is then merged with _clean.behavior.data.2023.to.2026.csv_ to create the final product _combined.behavior.and.movement.data.csv_. This is the full dataset of behavior and movement data for the turtles included in this study, only including data from the windows of time where there is both video annotation and sensor data to analyze (e.g., overnight sensor data where there was no accompanying video footage due to light constraints is filtered out at this point).
 
