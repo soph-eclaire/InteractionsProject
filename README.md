@@ -1,6 +1,7 @@
 **Data and script for Stalking the Social Lives of Sea Turtles: the prevalence, duration, and activity of interactions between three sympatric sea turtle species**
 
 Scripts for data cleaning, processing, and analysis can be found on GitHub at https://github.com/soph-eclaire/InteractionsProject
+
 Data cleaning and processing was completed using _InteractionsDataCleaningProcessing_Final.Rmd_
 Data analysis was completed using _Interactions_Analysis.Rmd_
 
@@ -23,6 +24,7 @@ The _Interactions_Analysis.Rmd_ script is broken down by individual analysis, wo
 **Files and Variables**
 
 **merged_interactions_annotations.csv**
+
 _Description: _complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
 _Variables:_
 *Note: "NA" indicated an unused variable (columns produced by Boris but not filled with any data when using the annotation software )
