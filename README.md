@@ -26,7 +26,8 @@ The _Interactions_Analysis.Rmd_ script is broken down by individual analysis, wo
 
 **merged_interactions_annotations.csv**
 
-_Description: _complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
+_Description:_ complete raw dataset of video annotations for data collected from 2023 to 2026, completed in behavioral analysis software Boris
+
 _Variables:_
 *Note: "NA" indicated an unused variable (columns produced by Boris but not filled with any data when using the annotation software )
 - Observation.id - Observation ID, including deployment number and number of particular video (e.g., CC-11-11_CR12_4 indicated camera CC-11-11, deployment 12, video 4)
@@ -50,7 +51,9 @@ _Variables:_
 - Time.offset..s. - NA
   
 **clean.behavior.data.2023.to.2026.csv**
+
 _Description:_ cleaned behavior data, ready to merge with movement/sensor data.
+
 _Variables:_
 - DeployID - Deployment number 
 - ObservID - Observation number (deployment number_video number from that deployment)
