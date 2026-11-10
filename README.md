@@ -1,6 +1,6 @@
 **Data and script for Stalking the Social Lives of Sea Turtles: the prevalence, duration, and activity of interactions between three sympatric sea turtle species**
 
-Scripts for data cleaning, processing, and analysis can be found (here) on GitHub at https://github.com/soph-eclaire/InteractionsProject
+Scripts for data cleaning, processing, and analysis can be found (here) on GitHub at https://github.com/soph-eclaire/InteractionsProject and at https://doi.org/10.5281/zenodo.24015669
 Full dataset used can be found at https://doi.org/10.5281/zenodo.24117513
 
 Data cleaning and processing was completed using _InteractionsDataCleaningProcessing_Final.Rmd_
